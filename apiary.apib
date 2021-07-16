@@ -1,0 +1,2932 @@
+FORMAT: 1A
+HOST: https://api.homecredit.vn/financing/v2
+
+# My Customer API
+This is documentation of the Financing v2 API for 
+
+**Base prefix: /financing/v2**.
+
+
+There are some rules that are valid throughout whole API.
+
+
+## Naming conventions
+- we use camelCase for all object and property names
+- we use plural in resource names
+
+## Paging
+- some resources (stated in documentation) that return collection of objects support pagination.
+- on request:
+  - query parameter `limit` specifies maximum number of objects in returned collection
+  - query parameter `after` specifies last object retrieved in previous request. Its value is usually `id` of last object retrieved in previous call, but this will be stated in documentation. Parameter `after` is used when traversing collection forwards.
+  - query parameter `before` specifies first object retrieved in previous request (analogy to `after` parameter), and is used when traversing collection backwards.
+  - if `before` and `after` are omitted, beginning of collection is returned, using specified sort order
+  - items in collection are always sorted accoridng to attribute which could be passed in after/before parameters. Even if you specify different sorting order, this attribute will be last sorting criterion; if you do not specify sorting order, result collection will be sorted according to this attribute.
+- on response:
+  - `pagingInfo` object is returned as part of response body with following attributes:
+    - _nextPage_ - request to retrieve next page. Either nextPage or previousPage is returned, depending whether you specify `after` or `before` parameter. If you specify neither `before` nor `after` parameter, these attributes will be omitted from response. 
+    - _prevPage_ - request to retrieve previous page (see `nextPage` attribute description above).
+    - _itemsPerPage_ - number of items per page
+
+
+Example request:
+```
+curl -X GET https://api.homecredit.eu/customer/v1/my/contracts?sort=category&limit=10&after=15
+```
+
+Example response pagingInfo:
+
+```javascript
+"pagingInfo": {
+    "nextPage": "/my/contracts?sort=category&limit=10&after=25"
+    "itemsPerPage": 10,
+}
+```
+
+## Sorting
+- some resources (stated in documentation) suppors result sorting. You can specify sorting attributes and order using `sort` request parameter. For ascending order, specify just attribute name; for descending order, add unary - in front of attribute name. You can specify multiple attributes for sorting, separated by comma.
+- each resource that supports sorting specifies list of attributes that can be used for sorting.
+
+Examples:
+- `/public/fxrates?sort=currencyCode` - get list of FX rates sorted by attribute currencyCode
+- `/public/branches?sort=-name` - get list of branches, sorted by attribute name in descending order
+- `/banking/accounts?sort=accountType,-accountCurrency,accountName` - get list of accounts, sorted by type (ascending), then by currency descending and then by account name (ascending)
+
+
+## Filtering
+Some resources (stated in documentation) supports results filtering. Such resources have list of filters specified together with possible operations and possible values.
+
+You can specify filtering by passing `filter` attribute. General pattern to specify filter is:
+
+`<filterName>|<operator>|<values>`
+
+- `filterName` - filter name from documentation
+- `operator` - operator, specified in resource documentation
+- `values` - one or more values for filter. Multiple values are separated by comma
+
+Multiple filters can be specified on each request, separated by semi-colon. They are joined by "AND", so each result item must satisfy all conditions.
+
+### Filtering examples
+
+- get a list of partners with category in (1, 5, 10)
+```
+GET /general/partners?filter=category|in|1,5,10
+```
+
+- get a list of contracts with contractDate in (2016-02-10, 2016-04-28>
+```
+GET /general/contracts?filter=contractDate|gt|2016-02-10;contractDate|lteq|2016-04-28
+```
+
+### List of operators
+| operator | meaning |
+| ---      | ---     |
+| lt       | less than |
+| lteq       | less than or equals |
+| eq       | equals    |
+| gteq       | greater than or equals    |
+| gt       | greater than |
+| in       | value in list |
+
+## API calls limits
+When limit is reached, you receive HTTP error 429. To inform you about limits we use following headers:
+- `X-Rate-Limit-Limit` - The number of allowed requests in the current period
+- `X-Rate-Limit-Remaining` - The number of remaining requests in the current period
+- `X-Rate-Limit-Reset` - The number of seconds left in the current period
+
+## Bandwith usage reducing
+
+### Fields attribute
+- for all GET resources, you can use optional `fields` query parameter to limit objects' attributes returned in response
+- `fields` parameter contains comma-separated list of attributes, that will be present in response; if omitted, all objects' attributes will be returned
+- you can specify only top-level attributes in `fields` parameter. This means that when response is an object, you can only specify top-level attributes. When response is an array of objects, only top-level attributes of those objects can be specified.
+- if you specify non-existent attribute or atttribute that is not in first level, you will receive HTTP status `400 Bad Request`
+- `fields` parameter has no effect on resources that returns plain value or array of plain values.
+
+Examples:
+  - `/public/branches?fields=id,name,location` - only get list of branches with id, name and location attributes
+
+### GZIP compression
+- we support GZIP compression of responses. Client must specify header `Accept-Encoding: gzip` in request in order to use the compression.
+
+## Versioning
+We use API version in URL (e.g. `https://api.homecredit.vn/customer/v1/my/profile`). Minor changes (see below) that don't break backwards compatibility do NOT increase API version, e.g. they may happen without prior notice and your application should be ready to handle them.
+
+Minor changes include:
+- adding new resource
+- adding new optional header/URL parameter or optional body attribute to request
+- adding new attribute to response body
+- adding new error codes and messages, provided that error structure is the same
+
+## Language
+We use English.
+
+## Response encoding
+Unless stated otherwise, all responses are sent as `Content-Type: application/json; charset=utf-8`
+
+## HTTP status codes
+We use following status codes throughout the API, except for OAuth flow when response codes are prescribed in RFC
+- 200 `OK` - request was successful
+- 201 `Created` - request was successfull and resource was created
+- 204 `No content` - we accepted your request but there is nothing to return (e.g. response is empty)
+- 400 `Bad Request` - request is missing required parameters
+- 401 `Unauthorized` - your API key is wrong or user not authorized (not logged in)
+- 403 `Forbidden` - access denied (e.g. user / application is not allowed to use the resource)
+- 404 `Not Found` - resource could not be found
+- 405 `Method Not Allowed` - specified method is not allowed for resource
+- 422 `Unprocessable Entity` - validation errors. Errors are specified in response body (see below)
+- 429 `Too Many Requests` - you exceeded the rate limit (see X-Rate-Limit headers)
+- 500 `Internal Server Error` - something went wrong on our side
+- 503 `Service Unavailable` - there is planned service outage (TODO: should specify response headers with more details on service outage)
+
+## Error handling
+Besides HTTP status codes, which are the main indication if something goes wrong, we also use `errors` object to report more details about errors.
+
+Errors object example:
+```javascript
+{
+    ...
+
+    errors: [
+        {
+            "code": "ERR_100",
+            "message": "Invalid contract number",
+            "severity": "ERROR",
+            "attribute": "partyAccount.accountNumber",          // optional
+            "ticketId": "UAT1:AMS:20160516-091658.450:45e4" // optional
+        },
+        {
+            "code": 352,
+            "message": "Insufficiend funds for payment order realization",
+            "severity": "WARN"
+        },
+        {
+            "code": 523,
+            "message": "This order will trigger currency exchange operation",
+            "severity": "INFO"
+        }
+    ]
+}
+```
+
+Error object attributes:
+
+| attribute name | description |
+| --- | --- |
+| code | unique error code |
+| message | human readable error description (non-localized) |
+| severity | error severity (see below) |
+| attribute | json path of request attribute that caused the error (optional) |
+| ticketId | internal ticket ID, used for error backtracking |
+
+There are 3 levels of error severity:
+
+- ERROR - critical error, execution cannot continue. This MUST be indicated also by appropriate HTTP status code (`422 Unprocessable Entity`)
+- WARN - non-critical error, execution can continue but further user interaction is advisable (for request to proceed, you MUST specify this error code in `override` request attribute). This MIGHT be indicated also by appropriate HTTP status code.
+- INFO - information only, execution can continue without user interaction.
+
+## Formats
+- **date** and **time** uses [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) formatting, e.g.:
+  - date is represented as `YYYY-mm-dd`. Timezone is added when necessary.
+  - time is represented as `Thh:mm:ss`. Timezone is added when necessary.
+  - day of week is represented as number 1..7, with 1 being Monday
+  - week no. 1 is the week with the year's first Thursday in it
+- **phone numbers** uses international format starting with '+' and including country code
+- **numbers format** number format is defined by [JSON standard](http://www.json.org), e.g. decimals are separated by `.`
+
+
+
+
+## Group Security
+
+## Securing APIs partner via OAuth2
+
+To access user sensitive data through API, you have to obtain *access token* first; this token is a string of arbitrary length (30+ chars) and it has to be included in HTTP header to every request to API. Open API uses [OAuth2](https://tools.ietf.org/html/rfc6749) mechanism to grant permissions to access user data. As for now, only [authorization code grant](https://tools.ietf.org/html/rfc6749##page-24) flow is supported. This section describes mechanism and resources to get valid access token and use it to access protected resources.
+
+- First step, partner have to login, use [`/authentication/v1/partner`](#security-login-partner-post)
+
+- Second, to obtain access token, use [`/hc-oauth2/token`](#financing-get-access-token-post) with the responded code on above step and parameters from HC.
+
+- Access token should be present in every request using request header `Authorization`, with type `Bearer`. If your access token has value `secret_token`, it should be specified as follows:
+```
+    Authorization: "Bearer secret_token"
+```
+
+- So the real example using curl will look like:
+```
+    curl -H "Authorization: Bearer secret_token"  https://api.homecredit.vn/financing/v1/customerOffers
+```
+- Access token has limited time validity (for 2 hours). After it is expired, you have to obtain new one using [`/hc-oauth2/token`](#financing-get-access-token-post)  resource
+
+
+- If you fail to specify OAuth2 token, you will receive `401 Unauthorized` error and following response body:
+
+```
+{
+   "error_description": "The access token is missing",
+   "error": "invalid_request"
+}
+```
+
+- If you provide invalid OAuth2 token, you will receive `403 Forbidden` error and following response body:
+
+```
+{
+    "error_description":"The access token is invalid or has expired",
+    "error":"invalid_token"
+}
+```
+    >IMPORTANT NOTE: You must keep your access token and login credentials safe. NEVER put login credentials nor access token into client page. If you plan to integrate API calls in client flow without submitting the page to server, you should implement REST endpoint bound to your shopping basket session, that will be used as a proxy to call HC API.  \
+    NEVER transfer access token nor login credentials over plain HTTP. Such requests will be refused
+
+
+## Login Partner [/authentication/v1/partner]
+Partner login.
+ 
+### Login [POST]
+Support partner login with provided parameters from HC likes: clientId, userName and Password.
+After succeeded, there is the code will use to obtain the access token.
+
+
+
++ Request Partner Login (application/json)
+    + Attributes (object)
+        + responseType: `code` (string, required)
+        + scope: `financing` (string,required) 
+        + clientId: `ee43289fd4af46f7b2c3d8e3213aaxscd` (string, required)
+        + credentials (object)
+            + userName: `partner1` (string, required)
+            + password: `password1` (string, required)
+
++ Response 200 (application/json;charset=UTF-8)
+Login succeeded 
+    + Attributes (object)
+        + redirectUri: `http://localhost:3500/oauth?code=246b62378f6c4ed88a58ddf9cc034fb5` (string, required)
+
++ Response 400 (application/json;charset=UTF-8)
+There are errors in request
+    + Attributes (Errors)
+
+## Get access token [/scope/hc-oauth2/token]
+Fill appropriate scope to the endpoint. 
+Example. 
+
+```
+/financialPartner/hc-oauth2/token
+```
+  
+### Get access token [POST]
+
+By using responed code from login step, to obtain the acces token which can be use to call APIs.
+
+
++ Request (application/x-www-form-urlencoded)
+    grant_type%3Dauthorization_code%26client_id%3D837362jhdy436rehdy3js847dh37392%26client_secret%3D837362jhdy436rehdy3js847dh37392%26code%3D12837485jdheydhfnfjtrj2c0f67048b5aa
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (object)
+        + refresh_token: `e47d39f7ef0a48748e0beafc30cd918e` (string)
+        + token_type: `bearer` (string)
+        + access_token: `70545309f4784d2a94a37c346acbd1a4` (string)
+        + expires_in: `7200` (string)
++ Response 404 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+
+# Group Client
+
+Support to identify/update/check client for partner.
+
+## Client Check [/clientSearches]
+
+Resource to check client exist or not
+
+### Check client [POST]
+
+Check client exist or not
+
+**User Stories**
+
+> "As developer, I want to check if customer exist in HCVN system or not with identification document number and date of birth information so that I can direct customer to different user flow."
+
++ Request Check client (application/json;charset=UTF-8)
+    + Attributes (ClientCheckRequest, required)
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (ClientCheckResponse, required)
+
+## Search Customer Person [/clients]
+
+Resource to search client on pif
+
+### Search Customer Person [GET]
+
+Resource to search client on pif by phone number and id card
+
++ Request Search client (application/json;charset=UTF-8)
+    + Attributes
+        + phoneNumber: `0906572306` (string, required) - primary phone number of client
+        + idCardNumber: `123456748` (string, required) - id card number
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes
+        + identificationCandidates (IdentificationCandidates, fixed-type, required)
+
+## Search Customer Person by CUID [/clients/{cuid}]
+
+Resource to search client on pif
+
++ Parameters
+    + cuid: `12345` (string, required)
+
+### Search Customer Person by CUID [GET]
+
+Resource to search client on pif by CUID
+
++ Request Search client (application/json;charset=UTF-8)
+    + Parameters
+        + cuid: `12345` (string, required)
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (ClientSearchResponse, required)
+
+## Customer Person Creation [/clients]
+
+Resource to create new customer of party role Customer Person
+
+### Identify Customer Person [POST]
+
+Identify Customer Person
+
+**User Stories**
+
+> "As web portal, I want to identify client profile on PIF"
+
++ Request Create Customer Person (application/json;charset=UTF-8)
+    + Attributes (ClientCreationRequest, required)
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (ClientCreationResponse, required)
+
+## Update Customer Person [/clients/{externalClientId}]
+
+Resource to update existing customer of party role Customer Person
+
+### Update Customer Person [PATCH]
+
+Update Customer Person
+
+**User Stories**
+
+> "As web portal, I want to update client profile on PIF."
+
++ Request Update Customer Person (application/json;charset=UTF-8)
+    + Attributes (ClientUpdateRequest, required)
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (ClientUpdateResponse, required)
+
+# Group OTP
+## Generate OTP for contract creation [/verifications]
+As a result verification code will be sent to user's phone number
+
+### Generate OTP for contract creation [POST]
+Generate a verification of customer's phone number
+
++ Request Generate Verification Code (application/json;charset=UTF-8)
+    + Attributes (VerificationRequest)
+
++ Response 200 (application/json;charset=UTF-8)
+Verification code is successfully generated
+    + Attributes (object)
+        + verificationID: `I5ABCAD2FM4quABCAD2BAAlUVpE6tkNAKLA` (string, required) - id of generated verification code
+
++ Response 400 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+## Generate OTP for offer scoring [/offerScoring/verifications]
+As a OTP code will be sent to user's phone number
+
+### Generate OTP for offer scoring [POST]
++ Request Send OTP for offer scoring
+    + Attributes (object)
+        + phoneNumber: `0906572306` (string, required) - phone number to send OTP
+
++ Response 200 (application/json;charset=UTF-8)
+OTP code is successfully generated
+    + Attributes (object)
+        + verificationID: `I5ABCAD2FM4quABCAD2BAAlUVpE6tkNAKLA` (string, required) - id of generated verification code
+
++ Response 400 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+## Validate OTP [/verifications]
+Check whether the inputted code match with generated verification code or not
+### Validate OTP [PUT]
+Check whether the inputted code match with generated verification code or not
+
++ Request Validate Verification Code (application/json;charset=UTF-8)
+    + Attributes (object)
+        + verificationID: `I5ABCAD2FM4quABCAD2BAAlUVpE6tkNAKLA` (string, required) - id of generated verification code
+        + codeID: `2222` (string, required) - code otp inputted by customer
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (object)
+        + data (ValidationResponse, required)
+
++ Request Validate Invalid (application/json;charset=UTF-8)
+
++ Response 422 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+
+# Group Marketing Offer
+
+## Validate OTP and get list of marketing offers [/offerScoring/verifications]
+Validate OTP to verify and get list of marketing offers
+### Validate OTP and get list of marketing offers [PUT]
+
+**Description**
+> "Calling this resource with PUT will validate the inputted OTP Code."
+
+Http code | Error Code | Error Message
+--- | --- | ---
+422 | INVALID_OTP | Remaining attempt:... Please input correct OTP code
+422 | NO_ATTEMPT_LEFT | No remaining attempt left. Please generate OTP again
+422 | CODE_EXPIRED | OTP code was expired. Please generate OTP again
+422 | INCORRECT_STATUS | OTP Code was invalid. Please generate OTP again
+
++ Request OFS recalculation
+    + Attributes (object)
+        + ofsScoring (OFSScoring, fixed-type, required)
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (OFSResponse)
+
++ Request Invalid
+    + Attributes (ScoringRequest)
+
++ Response 422 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+## Get list of marketing offers [/offerScoring/marketingOffers]
+Get list of marketing offers (without OTP validation)
+
+### Get list of marketing offers [POST]
+
+**Description**
+> "Get list of marketing offers."
+
++ Request List Marketing Offer
+    + Attributes (object)
+        + ofsScoring (OFSScoringNoOTP, fixed-type, required)
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (OFSNoOTPResponse)
+
++ Response 422 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+## Recalculate Offer [/offerScoring/recalculation]
+This resource supports to recalculate a specific offer
+
+### Recalculate offer [POST]
++ Request Recalculate
+    + Attributes (object)
+        + externalClientId: `1XEABCAD2FABCAD2F8kv` (string, required) - encrypted CUID
+        + offerId: `0a13878c-6d8c-1a87-816d-909917b30054` (string, optional)
+        + income: `20000000` (number, optional) - new income of client. Currency is VND
+        + sourceChannel: `WEB` (enum, required)
+            + WEB
+            + CAPP
+        + userStatistics (array[UserStatistics], fixed-type, required) - used to input session_id for underwriting purpose
+        + employeeCode: `123456` (string, optional)
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (object)
+        + scoringCode: `1750976` (string, required) - trace code to query scoring result
+
+## Scoring result [/offerScoring/scoringResult/{scoringCode}]
+This resource to get scoring result
+
++ Parameters
+    + scoringCode: `1750976` (string, required) - scoring code
+
+### Get Scoring Result [GET]
+Get scoring result
+
++ Request Get offer scoring result (application/json;charset=UTF-8)
+    + Parameters
+        + scoringCode: `1750976`
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (OfferScoringResult)
+
++ Response 404 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+
+# Group Financing
+Resources handling functionalities provided to eshop. You need valid [API Key](#header-api-key) to access these resources.
+
+## Customer Offer [/customerOffers{?include}]
+Generate customer offers.
+
++ Parameters
+    + include: `ALL` (enum, optional) - which offers type to include.
+       + `ALL`
+       + `CLOSED_END_LOAN`
+       + `REVOLVING_LOAN`
+
+### Customer offers [POST]
+Generate customer offers based on info provided.
+
+feature | supported by resource
+--- | ---
+[paging](#header-paging) | no
+[sorting](#header-sorting) | no
+[filtering](#header-filtering) | no
+
+**Description**
+
+> Customer Offer API should be called to get offerID to be used as parameter when calling Create Application API.
+
++ Request Customer offers
+    + Parameters
+        + include: `ALL`
+    + Attributes (CustomerOfferRequest, fixed-type, required)
+
++ Response 200 (application/json;charset=UTF-8)
+Customer Offer found
+    + Attributes (object)
+        + data (array[CustomerOfferResponseSuccess], fixed-type, required)
+        + pagingInfo (PagingInfo, fixed-type, optional)
+
++ Request customer offers #2
+    + Parameters
+        + include: `ALL`
+    + Attributes (CustomerOfferRequest, fixed-type, required)
+
++ Response 422 (application/json;charset=UTF-8)
+Customer Offer Fault
+    + Attributes (CustomerOfferResponseFailure)
+
++ Request Incomplete request
+    + Parameters
+        + include: `ALL`
+    + Attributes (CustomerOfferRequest,required)
+
++ Response 400 (application/json;charset=UTF-8)
+There are errors in request
+    + Attributes (Errors)
+
+## Application [/applications]
+
+### Create Application [POST]
+Support to create application for customer.
+
+**Description**
+
+> Before calling Create Application API, Generate Verification Code API and Validate Verification Code API should be called to get verificationID for verified Phone Number."
+
++ Request Create Application (application/json;charset=UTF-8)
+    + Headers
+        firebaseToken: absd32ada
+    + Attributes (ApplicationRequest, fixed-type, required)
+
++ Response 200 (application/json;charset=UTF-8)
+Create Application Success
+    + Attributes (ApplicationResponseSuccess)
+
++ Request Create Application - invalid (application/json;charset=UTF-8)
+    + Attributes (ApplicationRequest, fixed-type, required)
+        + offerCode: `no_offer` (string, required)
+
+
++ Response 422 (application/json;charset=UTF-8)
+Create Application Fault
+    + Attributes (Errors)
+
+## Specific Application [/applications/{applicationCode}]
+Specific application
+
++ Parameters
+    + applicationCode: `3722781175` (string, required) - ID of Application
+
+### Update specific Application [PATCH]
+Update fields for a specific application already pre-approved
+
+**Description**
+
+> "As a developer, I want to only update information for application without submitting for evaluation so that I can provide partial application update capability."
+
++ Request Update Application (application/json;charset=UTF-8)
+    + Parameters
+        + applicationCode: `3722781175` (string, required)
+    + Attributes (ApplicationUpdateRequest, required)
+
++ Response 204 (application/json;charset=UTF-8)
+
++ Request Update non-existing application (application/json;charset=UTF-8)
+    + Parameters
+        + applicationCode: `999999999` (string, required)
+
++ Response 404 (application/json;charset=UTF-8)
+Non-existing application
+    + Attributes (Errors)
+
++ Request Update Application - invalid (application/json;charset=UTF-8)
+    + Parameters
+        + applicationCode: `3722781175` (string, required)
+    + Attributes (ApplicationUpdateRequest, required)
+        + offerCode: `no_offer` (string, required) - invalid offer code
+
++ Response 422 (application/json;charset=UTF-8)
+Update specific application fault
+    + Attributes (Errors)
+
+## Application Evaluation [/applications/{applicationCode}/evaluations]
+Resource supporting application evaluation function
+
++ Parameters
+    + applicationCode: `3722781175` (string, required) - ID of Application
+
+### Evaluate specific Application [POST]
+Submit application for approval
+
+**Description**
+
+> "As a developer, I want to submit application for evaluation with application code after all required fields have been updated for the application. This API is for submit only, application status update will be provided via different APIs."
+
++ Request Evaluate Application (application/json;charset=UTF-8)
+    + Parameters
+        + applicationCode: `3722781175` (string, required)
+
++ Response 204 (application/json;charset=UTF-8)
+
++ Request Evaluate non-existing application (application/json;charset=UTF-8)
+    + Parameters
+        + applicationCode: `999999999` (string, required)
+
++ Response 404 (application/json;charset=UTF-8)
+Non-existing application
+    + Attributes (Errors)
+
++ Request Evaluate Application - invalid (application/json;charset=UTF-8)
+    + Parameters
+        + applicationCode: `3722781175` (string, required)
+
++ Response 422 (application/json;charset=UTF-8)
+Evaluate specific application fault
+    + Attributes (Errors)
+
+## Enumeration [/enumerations/{enumCode}]
+Not used
+
+### Get Enumeration Code List [GET]
+Support to get enumeration code list.
+
+feature | supported by resource
+--- | ---
+[paging](#header-paging) | no
+[sorting](#header-sorting) | no
+[filtering](#header-filtering) | yes
+
+#### Filtering
+This resource supports results [filtering](#header-filtering). You can use following filters:
+
+ - isActive
+
+filter name | possible operators | example
+--- | --- | ---
+isActive | eq | `/enumerations/EDUCATION?filter=isActive|eq|TRUE` - all active enum code items
+
++ Request Get Enum Code List
+    + Parameters
+        + enumCode: `EDUCATION` (EnumCode, required)
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (object)
+        + data (array[EnumCodeList], fixed-type, required)
+        + pagingInfo (PagingInfo, fixed-type, optional)
+
++ Request Non-existing contract
+    + Parameters
+        + enumCode: `this_is_no_enum_code`
+
++ Response 404 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+## Commodity [/commodities{?shopID}]
+Commodity categories & types of commodities sold in specific salesroom
+
++ Parameters
+    + shopID: `00001` (string, optional) - if not request with shopID, use partner authenticaton to get shopID
+
+### List of commodity  [GET]
+Get a list of all commodity categories & commodity types of commodity sold in specific salesroom
+
+feature | supported by resource
+--- | ---
+[paging](#header-paging) |  no
+[sorting](#header-sorting) | no
+[filtering](#header-filtering) | no
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (object)
+        + data (array[CommodityInfo], fixed-type, required)
+
++ Response 500 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+## Application Status [/applications/{applicationCode}/status]
+Resource support getting application status
+
++ Parameters
+    + applicationCode: `3722781175` (string, required) - ID of Application
+
+### Get application status [GET]
+Get application status
+
+**Description**
+
+> "As a developer, I would like to get status of application created via my application. List of status includes: Waiting for pre-approval, pre-approved, waiting for approval, approved, rejected, signed, cancelled. Application of other statuses cannot be returned."
+
++ Request application status
+    + applicationCode: `999999999` (string, required)
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (object)
+        + status: (Status, enum)
+        + applicationForm: `LONG` (string, optional) - whether 2BOD should be LONG form or SHORT form
+
++ Request non-existing application
+    + applicationCode: `999999999` (string, required)
+
++ Response 404 (application/json;charset=UTF-8)
+Non-existing application
+    + Attributes (Errors)
+
++ Request wrong status application
+    + applicationCode: `999999999` (string, required)
+
++ Response 422 (application/json;charset=UTF-8)
+Wrong-status application
+    + Attributes (Errors)
+
+## Prepare Material [/applications/{applicationCode}/prepareMaterial]
+This function will create the application documents on print_out tab. And application is ready to sign.
+
++ Parameters
+    + applicationCode: `3722781175` (string, required) - ID of application
+
+### Prepare Material [POST]
+This function will do Imei/serial validation for each commodity in application and create the application documents on print_out tab in case all commodities are eligible. Then application is ready to sign.
+
+This resource also supports to update Imei/Serial number to commodity before preparing material by input Imei/Serial Number parameter.
+
+| HTTPs| Error Code | Error Message | 
+| --- | --- | --- |
+| 422 | INVALID_CONTRACT_CODE | Contract can not be found |
+| 422 | INELIGIBLE_CONTRACT_STATUS | Contract status should be 'APPROVED' for preparing material |
+| 422 | MISSING_IMEI | Please input Imei number before preparing material for application |
+| 422 | MISSING_SERIAL_NUMBER | Please input Serial number before preparing material for application |
+| 422 | FAILED_TO_UPDATE_COMMODITY | for example: INVALID_IMEI, VALIDATION_ERROR...|
+
+**Example of Request:**
+
+> Request PrepareMaterial with updating Imei:
+https://api.homecredit.vn/financing/v2/applications/3722781175/prepareMaterial
+
+```
+Body:
+{
+  "commodity": {
+    "imei": "444348169188601"
+  },
+  "salesroomCode": "000001",
+  "retailAgent": "1213124"
+}
+```
+
+
+> Request PrepareMaterial with updating both Imei and Serial Number:
+https://api.homecredit.vn/financing/v2/applications/3722781175/prepareMaterial
+
+```
+Body:
+{
+  "commodity": {
+    "imei": "444348169188601",
+    "serialNumber": "ABCD1234456"
+  },
+  "salesroomCode": "000001",
+  "retailAgent": "1213124"
+}
+```
+
+
+> Request PrepareMaterial without updating Imei/Serial number:
+https://api.homecredit.vn/financing/v2/applications/3722781175/prepareMaterial
+No body
+
++ Request PrepareMaterial
+    + Parameters
+        + applicationCode: `3722781175`
+    + Attributes 
+        + commodity (CommodityInformation, optional) - Imei/Serial number used to update to commodity
+        + salesroomCode: `000001` (string, optional) - Salesroom code
+        + retailAgent: `1213124` (string, optional) - Retail agent code
+
++ Response 200 (application/json;charset=UTF-8)
+        + Attributes
+            + validUntil: `2017-10-15` (string, required) - The valid date of material
+
++ Request Prepare Material for non-existing application
+    + Parameters
+        + applicationCode: `9999999999`
+    
++ Response 404 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
++ Request Prepare Material for invalid application
+    + Parameters
+        + applicationCode: `9999999999`
+ 
++ Response 422 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+## Application Esigning Eligibility [/applications/{applicationCode}/eligibilities]
+Esignning Eligibility of the application
+
++ Parameters
+    + applicationCode: `2354222323` (string, required) - ID of Application
+
+### Check application esigning eligibility [GET]
+Check consent of client profile on PIF which belongs to provided contract and return whether contract is eligible to proceed esigning
+
+**User Stories**
+> "As developer, I want to check if contract is eligible for esigning so that I can take appropriate flow for application."
+
+| HTTPs| Error Code | Error Message | 
+| --- | --- | --- |
+| 422 | APPLICATION_NOT_APPROVED | Application should be approved to check Esigning Eligibility |
+
++ Request ELIGIBLE for Esigning (application/json;charset=UTF-8)
+    + Parameters 
+       + applicationCode: `2354222323` (string, required) - ID of Application
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes
+       + eSigning: `ELIGIBLE` (enum, required)
+          + ELIGIBLE
+          + INELIGIBLE
+      
++ Request INELIGIBLE for Esigning (application/json;charset=UTF-8)
+    + Parameters 
+       + applicationCode: `2354222323` (string, required) - ID of Application
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes
+       + eSigning: `INELIGIBLE` (enum, required)
+          + ELIGIBLE
+          + INELIGIBLE
+       + EserviceRegistrationUrl: `https://online-test3.homecredit.vn/Customer/EServiceInputInfo?user=o_SS6yP5KWh2gKriux_NqfZTBNu9noBfd12fgQT855N0iVCs2eM2CvAILDDgWQ_ScBtHV-541t7lmHXY1v_0KMJhKMYgo-jo51focRpE0J8bOSkjxUwakymPj8nC_N6aUme1peNfK1ACxaTkoZdMZVqxll_qkrLwef7BaZgiPVAwl6JkQNEKJ3zHvonWyVjIr3Ez7xOBX8TTL6UReXWxx_l8H4w54gB0MBOCrfLb29Co_cn9JE2lTSxQZIff3WvH` (string, optional) - the link to re-direct client go to Client Zone (online.homecredit.vn) for E-Service e-signing
+
++ Request Invalid application (application/json;charset=UTF-8)
+    + Parameters 
+       + applicationCode: `2354222323` (string, required) - ID of Application
+
++ Response 422 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+## List of application Offers [/applications/{applicationCode}/offers{?type}]
+Offers used in 1 specific application
+
++ Parameters
+    + applicationCode: `3722781175` (string, required) - ID of Application
+    + type: `ALTERNATIVE` (string, optional) - type of offer. Possible values for "type" request parameter
+          are `ALTERNATIVE`, `PRIMARY`.
+
+### Get list of application offers [GET]
+Get list of offers used in 1 specific application
+
+feature | supported by resource
+--- | ---
+[paging](#header-paging) | no
+[sorting](#header-sorting) | no
+[filtering](#header-filtering) | no
+
++ Request offer information
+    + Parameters
+        + applicationCode: `3722781175`
+        + type: `ALTERNATIVE`
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (object)
+        + data (array[ApplicationOffer], fixed-type, required)
+
++ Request Non-existing application offer information
+    + Parameters
+        + applicationCode: `9999999999`
+
++ Response 404 (application/json;charset=UTF-8)
+Application not found
+    + Attributes (Errors)
+
+## Accept alternative offers [/applications/{applicationCode}/offers/{offerCode}/]
+Accept application offer
+
++ Parameters
+    + applicationCode: `2354222323` (string, required) - ID of Application
+    + offerCode: `1231123` (string, required) - Key for unique identification of particular offer
+
+### Accept alternative offers [PATCH]
+
+**Description**
+
+> "If Get List of Application Offers return primary offer & multiple alternative offers, this will support clients to choose (accept) alternative offers. After calling this resource, offer will become primary application offer."
+
++ Request Accept alternative offer
+    + Parameters
+        + applicationCode: `2354222323`
+        + offerCode: `1231123`
+    + Attributes (object)
+        + accept: `true` (boolean, required)
+        + offerRELIPCode: `1232131` (string, optional) - only CCCD product required offerRELIPCode
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (object)
+        + acceptedOfferCode: `1231123` (string, required) - offer code which has been accepted
+
++ Request Accept non-existing alternative offer or wrong contract
+    + Parameters
+        + applicationCode: `999999999`
+        + offerCode: `999999`
+
++ Response 404 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
++ Request Accept invalid offer
+    + Parameters
+        + applicationCode: `2354222323`
+        + offerCode: `999999`
+
++ Response 422 (application/json;charset=UTF-8)
+    + Attributes (Errors)
+
+## Goods Delivery Notes [/applications/{applicationCode}/goodsDeliveryNotes]
+
+### Application information [GET]
+
+**Description**
+
+> "Support to get APPROVED, SIGNED or ACTIVE contract information including: Product Code, Commodities Info (Type, name, model), down payment, approval date, client info (client name, truncated ID, truncated phone), terms, salesroom code, annual interest rate and insurance information for Good Delivery Notes Issuing that aims to replace offline cross check before collecting down payment and issuing delivery note to client."
+
++ Parameters
+    + applicationCode: `4000836817` (string, required) - ID of contract
+
++ Request Success (application/json;charset=UTF-8) 
+    + Parameters
+        + applicationCode: `4000836817` (string, required) - ID of contract
+
++ Response 200 (application/json;charset=UTF-8)
+Get data successfully
+    + Attributes (ApplicationInfoResponse, required)
+
++ Request Not found (application/json;charset=UTF-8) 
+    + Parameters
+        + applicationCode: `0000000000` (string, required) - ID of contract
+
++ Response 404 (application/json;charset=UTF-8)
+Contract not found
+    + Attributes (Errors)
+
++ Request Not eligible (application/json;charset=UTF-8) 
+    + Parameters
+        + applicationCode: `3000836816` (string, required) - ID of contract
+
++ Response 422 (application/json;charset=UTF-8)
+Contract is not eligible
+    + Attributes (Errors)
+
+## Application Cancellation [/applications/{applicationCode}/cancellations]
+
+**Description**
+
+> "Support cancel an application due to typo mistakes or client changes their mind."
+
+| HTTPs| Error Code | Error Message | 
+| --- | --- | --- |
+| 422 | WRONG_CONTRACT_STATUS | Wrong contract status |
+| 422 | NOT_DEALER_CONTRACT | Not contract of this Dealer |
+| 404 | CONTRACT_NOT_FOUND | Contract can not be found |
+
++ Parameters
+    + applicationCode: `4000836817` (string, required) - ID of contract
++ Attributes 
+
+### Cancel Application [POST]
+
++ Request Success (application/json;charset=UTF-8) 
+    + Parameters
+        + applicationCode: `4000836817` (string, required) - ID of contract
+    + Attributes (ApplicationCancellationRequest, required)
+
++ Response 204 (application/json;charset=UTF-8)
+
++ Request Not found (application/json;charset=UTF-8) 
+    + Parameters
+        + applicationCode: `0000000000` (string, required) - ID of contract
+    + Attributes (ApplicationCancellationRequest, required)
+
++ Response 404 (application/json;charset=UTF-8)
+Contract not found
+    + Attributes (Errors)
+
++ Request Invalid (application/json;charset=UTF-8) 
+    + Parameters
+        + applicationCode: `3000836816` (string, required) - ID of contract
+    + Attributes (ApplicationCancellationRequest, required)
+
++ Response 422 (application/json;charset=UTF-8)
+Contract is not invalid
+    + Attributes (Errors)
+
+## Application Document Uploading [/applications/{applicationCode}/uploadDocuments]
+
+**Description**
+
+> "Support upload document for an application."
+
+| HTTPs| Error Code | Error Message |
+| --- | --- | --- |
+| 404 | APPLICATION_NOT_FOUND | ApplicationCode not found |
+| 404 | DOCUMENT_NOT_FOUND | Document not found |
+| 422 | WRONG_CONTRACT_STATUS | Status is not correct |
+| 422 | INVALID_DOCUMENT_DATA | Document data is invalid |
+
++ Parameters
+    + applicationCode: `4000836817` (string, required) - ID of contract
++ Attributes
+
+### Upload Application Document [POST]
+
++ Request Success (application/json;charset=UTF-8)
+    + Parameters
+        + applicationCode: `4000836817` (string, required) - ID of contract
+    + Attributes (object, required)
+        + identificationDocuments (array[IdentificationDocument], fixed-type, required) - client identity documents
+
++ Response 204 (application/json;charset=UTF-8)
+
++ Request Not found (application/json;charset=UTF-8)
+    + Parameters
+        + applicationCode: `0000000000` (string, required) - ID of contract
+    + Attributes (object, required)
+        + identificationDocuments (array[IdentificationDocument], fixed-type, required) - client identity documents
+
++ Response 404 (application/json;charset=UTF-8)
+Application not found
+    + Attributes (Errors)
+
+# Group Lead
+Support to create and get lead for partner.
+
+## Lead [/leads]
+
+### Create Lead [POST]
+Support to create lead for partner.
+
++ Request Create Lead (application/json;charset=UTF-8)
+    + Attributes (LeadRequest, required)
+
++ Response 200 (application/json;charset=UTF-8)
+Create lead success
+    + Attributes (LeadResponseSuccess)
+
+## Lead Details [/leads/{leadID}]
+Resources to get lead details
+
++ Parameters
+    + leadID: `0123912391` (string, required) - id of lead to get
+
+### Get lead details [GET]
+Get lead details for a specific leads
+
+**Description**
+ > This API is to support EPOS Gateway to get lead detailed information stored in local database to pre-fill in application form."
+
++ Request Get Lead Details (application/json;charset=UTF-8)
+    + Parameters
+        + leadID: `0123912391`
+
++ Response 200 (application/json;charset=UTF-8)
+    + Attributes (LeadDetails)
+
++ Request Non-existing Lead Details (application/json;charset=UTF-8)
+    + Parameters
+        + leadID: `no-lead`
+
++ Response 404 (application/json;charset=UTF-8)
+Lead Not found
+    + Attributes (Errors)
+
+# Data Structures
+
+## Error (object)
++ code: `ERR_1000_SOME_ERROR_CODE` (string, required) - unique internal error code
++ message: `Some error/validation message description` (string, required) - human readable error description (non-localized)
++ severity (enum, required)
+    + ERROR - critical error, execution cannot continue. This MUST be indicated also by appropriate HTTP status code
+    + WARN - non-critical error, execution can continue but further user interaction is advisable. This MIGHT be indicated also by appropriate HTTP status code
+    + INFO - information only, execution can continue without user interaction
++ attribute: `personalBirthNumber` (string, optional) - json path of request attribute that caused the error (if applicable)    
++ ticketId: `UAT1:AMS:20160516-091658.450:45e4` (string, optional) - internal ticket ID, used for error backtracking
+
+## Errors (object)
++ errors (array[Error], fixed-type, required)
+
+## PagingInfo (object)
++ itemsPerPage: 10 (number, required) - number of items per page
++ nextPage: `transactions?sort=category&limit=10&after=25` (string, optional) - request to retrieve next page, if it exists and can be unambiguously specified
++ prevPage: `transactions?sort=category&limit=10&before=25` (string, optional) - request to retrieve previous page, if it exists and can be unambiguously specified
+
+## CommodityInfo (object)
++ commodityCategory: `CC_AUDIO_VIDEO` (string, required) - code of category
++ categoryName: `Audio, Video` (string, required) - name of category
++ commodityTypes (array[CommodityType], fixed-type, required) - commodity type belongs to this category
+
+## CommodityType (object)
++ commodityType: `CT_AUDIO_VIDEO_1` (string, required) - code of type
++ typeName: `Antenna, Decoder` (string, required) - name of type
+
+## CustomerOfferResponseSuccess (object)
++ offerCode: `1234` (string, required) - Key for unique identification of particular offer.
++ productInformation (Product, fixed-type, required) - information of product from offer
++ services (array[Service], fixed-type, required) - all services of product offer
++ One Of
+   + celOffer (CELOfferInfo, fixed-type, optional) - additional info of CEL offer
+   + relOffer (RELOfferInfo, fixed-type, optional) - additional info of REL offer
+   
+## CELOfferInfo (object) - parameters for CEL only
++ tenor: 10 (number, required) - number of installment of contract when signed
++ firstInstallmentDueDate: `2017-02-27` (string, required) -  due date of this contract, in case client has more than 1 contract, it should be the merged due date of client
++ loanAmount (AmountCurrency, fixed-type, required) - total principle
++ cashPayment (AmountCurrency, fixed-type, optional) - total cash payment in advance of client
++ downPayment (AmountCurrency, fixed-type, optional) - total down payment of client
++ monthlyInstallmentAmount (AmountCurrency, fixed-type, required) - Total amount of regular repayment.
++ annualInterestRate: 2.96 (number, required) - annual interest rate in percent
++ presentedInterestRate: 2.96 (number, required) - monthly presented interest rate in percent
++ presentedInterestRateForGift: 2.96 (number, required) - presented interest rate in percent with gift
++ totalInsurancePremium (AmountCurrency, fixed-type, required) - Sum of fees assigned to offered insurance services
++ totalPaymentPerCredit (AmountCurrency, fixed-type, required) - Total costs of loan (principle inclusive).
+
+## RELOfferInfo (object)- parameters for REL only
++ creditLimit (AmountCurrency, optional) - credit limit amount of an account for cash loan
++ relOfferCode: `23542` (string, optional) - offer code for credit card with initial goods purchase
++ tenor: 10 (number, optional) - number of installment for initial goods purchase
++ AIR: 12.6 (number, optional) - Annual Interest Rate
++ initTerm: 6 (number, optional)
++ initAIR: 12.6 (number, optional)
++ downPayment (AmountCurrency, optional) - total down payment of client for initial goods purchase
++ loanAmount (AmountCurrency, optional) - total principal
++ minimalInstallmentAmount (AmountCurrency, optional) - Total amount of regular repayment.
++ feeAmount (AmountCurrency, optional) - total fee amount for credit card with initial goods purchase
+
+## Product (object)
++ type: `CLOSED_END_LOAN` (enum, required) - type of product
+   + `CLOSED_END_LOAN`
+   + `REVOLVING_LOAN`
++ code: `CLWDB3` (string, required) - code of product
++ name: `CASH LOAN WALK IN DB 3` (string, required) - name of product
++ initialTransactionType: `CASH` (enum, required) - type of initial transaction
+   + `POS` - PURCHASE transaction
+   + `CASH` - CASH transation
+   + `NOT_DEFINED` - NDF for REL x-sell contract without initial transaction
+
+## Service (object)
++ type: `LOAN_OPTIONS` (enum, required) - type or category of services
+   + `INSURANCE`
+   + `LOAN_OPTIONS`
+   + `PAYMENT_CARD`
++ code: `FER01` (string, required) - code of service
++ name: `Early repayment 1` (string, required) - name of service
++ description: `Full early repayment of loan` (string, required) - description of service
+
+## Commodity (object)
++ type: `CT_EBIKE` (string, required) - type code of commidity
++ price (AmountCurrency, fixed-type, required) - price of commodity
++ manufacturer: `APPLE` (string, optional) - manufacturer of commodity
++ model: `IPAD PRO` (string, optional) - model commodity, input in case select manufacturer
+
+## AmountCurrency (object)
++ amount: 10000000 (number, required)
++ currency: `VND` (string, required) - country currency
+
+## UserStatistics (object)
++ key: `session_id` (string, required) - key of userStatistics
++ value: `111` (string, required) - value of userStatistics
+
+## MerchantUrls
++ approvedRedirect: `https://eshop.address.com/approved?appID=123`
++ rejectedRedirect: `https://eshop.address.com/rejected?appID=123`
++ notificationEndpoint: `https://eshop.address.com/notifications?appID=123`
+
+## PaymentInformation (object)
++ method: `GENERAL_BANK_ACCOUNT` (enum, required) - disbursement type
+   + `GENERAL_BANK_ACCOUNT` - GBA General bank account
+   + `PARTNER_BANK` - PBA Payment provider bank account
+   + `SALESROOM_BANK_ACCOUNT` - SBA Retailer bank account
+   + `DIRECT_DEBIT`
+   + `OTHER`
+   + `CARD_ACCOUNT` - External (Eg. Citibank, Vietcombank,...) Card Account Number 
++ bankAccount (BankAccount, fixed-type, optional) - to be used for method GENERAL_BANK_ACCOUNT and direct debit type
++ salesroomCode: `010268` (string, optional) - to be used for method PARTNER_BANK
++ cardAccount (CardAccount, optional) - to be used for method CARD_ACCOUNT type
+
+## BankAccount (object)
++ accountNumber: `3874923431` (string, required) - bank accound number
++ holderName: `Bùi Văn Hoan` (string, optional) - name of bank account holder
++ bankName: `ANZ BANK` (string, optional) - name of Bank
++ region: `TP.HCM` (string, optional) - city location of bank branch
++ bankBranch: `ANZ BANK - CN HCM` (string, required)
+
+## CardAccount (object)
++ cardIssuerName: `Ngân hàng TMCP Ngoại Thương Việt Nam` (string, required) - name of debit card issuer
++ cardReferenceNumber: `2C9180876C464D36016C4C5557A50002` (string, required) - card reference number 
++ truncatedPan: `970436***************2030` (string, required) - masked card number
+
+## Employment (object)
++ econimicalStatus (EconomicalStatus, required)
++ employerInfo (EmployerInfo, optional)
++ monthlyIncome (AmountCurrency, required)
++ monthlyPaymentLoan (AmountCurrency, optional)
+
+## EmployerInfo (object)
++ name: `HCVB` (string, required) - company name
++ profession (Profession, fixed-type, required) - job of applicant
++ employedFrom: `2010-10-20` (string, required) - start date of employment
++ employerAddress (Address, fixed-type, optional) - employment address
+
+## RelatedPerson (object)
++ type (RelationType, fixed-type, required) - relation type
++ name (FullName, fixed-type, required) - full name
++ phones (array[PhoneNumber], fixed-type, required) - contact type info of relatives
+
+## Document (object)
++ documentType: `PHOTO_PERSON` (enum, required) - type of documents
+   + `BANK_STATMENT_3` - 3 months Bank Account Statement
+   + `BILL_ANY` - Utility Bill
+   + `BILL_ANY_ELECT` - Electric Bill
+   + `BILL_ANY_PHONE` - Phone Bill
+   + `BILL_ANY_TV` - TV Cable Bill
+   + `BILL_ANY_WATER` - Water Bill
+   + `BUS_REG_CERT` - Business Registration Certificate
+   + `COMP_CONFRM_LETTR` - Company Confirmation Letter
+   + `LAB_CONTRACT` - Labor Contract
+   + `OFR_LETT` - Cash Loan Offer Letter
+   + `OPS_LICENSE` - Operation License
+   + `PAY_SLIP_ANY` - Salary Pay Slip
+   + `PAY_SLIP_ANY_3` - 3 months Pay Slip
+   + `PAY_SLIP_ANY_6` - 6 months Pay Slip
+   + `TAX_CERT` - Tax Certificate
+   + `GOODS_RECEIPT` - Goods receipt
+   + `STUDENT_CARD` - Student Card
+   + `CAR_OWNER_CERT` - Certificate of ownership for car or truck
+   + `MEDICAL_INS_CARD` - Social Medical Insurance Card
+   + `PHOTO_PERSON` - Client photo
+   + `PICTURE_OF_MISTAKE` - Picture of Mistake
+   + `RENT_CONTRACT` - Renting/ Leasing contract
++ documentInfo (array[DocumentInformation], fixed-type, required)
++ filename: `ID.gif` (string, optional) - photo taken file name
++ content: `this is content` (string, optional) - content of document base64
++ note: `This is note for FRB` (string, optional) - note of document
++ photoTakingResult: `TECHNICAL_PROBLEM` (enum, required) - result of client photo taken, required if document type is PHOTO_PERSON
+   + `CLIENT_DOESNT_AGREE` - Picture not taken, client doesn't agree
+   + `OFFLINE_NO_COMPUTER` - Picture not taken, offline process - shop with no computer
+   + `TECHNICAL_PROBLEM` - Picture not taken, technical problem
+   + `SAVED_UPLOAD` - Picture taken, saved result - photo upload
+   + `SAVED_COMPONENT` - Picture taken, saved result - photo component
+   + `OFFLINE_BLACKOUT` - Picture not taken, offline process - internet / electricity blackout
+   + `NO_CAMERA` - Picture not taken, shop with no camera
+
+## DocumentInformation (object)
++ type: `DOCUMENT_NUMBER` (enum, required) - document type attribute
+   + `DOCUMENT_NUMBER`
+   + `ANY_BILL`
+   + `AN_BILL`
+   + `CLIENT_CODE`
+   + `ELECTRIC_BILL`
+   + `PHONE_BILL`
+   + `CABLE_TV_BILL`
+   + `WATER_BILL`
+   + `INSURANCE_CARD_NUM`
+   + `BANK_ACCOUNT_NUM`
+   + `EMPLOYEE_CODE`
+   + `LABOR_CONTRACT_NUM`
++ number: `78787878` (string, required) - value of document type attribute
+
+## LoanPurpose (enum)
++ `A1` - Consumption A.1: Purchase transportation vehicle (motobike, bicycle, etc.)
++ `A2` - Consumption A.2: Purchase household equipment (furniture, electronic devices, etc.)
++ `A3` - Consumption A.3: Purchase consumption goods (foods, drinks, clothes, etc.)
++ `B1` - Consumption B.1: Educational expenses
++ `B2` - Consumption B.2: Medical treatment
++ `B3` - Consumption B.3: Travel expenses
++ `B4` - Consumption B.4: Cultural expenses (wedding, funeral, etc.)
++ `B5` - Consumption B.5: Sports expenses
++ `C` - Consumption C: House rennovation/repairs
++ `OTHERS` - Others_Others
+
+
+## RelationType (enum)
++ `FRIEND`
++ `COLLEAGUE`
++ `BROTHER`
++ `SISTER`
++ `FATHER`
++ `MOTHER`
++ `GUARDIAN`
++ `WIFE`
++ `HUSBAND`
++ `PARTNER`
++ `GRAND_MOTHER`
++ `GRAND_FATHER`
++ `OTHER`
+
+## Education (enum)
++ `ELEMENTARY_SCHOOL` - primary school 1st to 5th grade
++ `PTCS` - Junior school education (grade 6-9)
++ `PTTH` - High school education (grade 10-12)
++ `BACHELORS`- Bachelor degree
++ `MASTERS` - Master degree
+
+## MaritalStatus (enum)
++ `SINGLE`
++ `MARRIED`
++ `DIVORCED`
++ `WIDOWED`
++ `SEPARATED`
++ `LIVING_WITH_PARTNER`
+
+## EconomicalStatus (enum)
++ `EMPLOYED`
++ `SELFEMPLOYED`
++ `UNEMPLOYED`
++ `STUDENT`
++ `RETIRED`
++ `PERSON_IN_HOUSEHOLD`
+
+## Profession (enum)
++ `ADMINISTRATIVE`
++ `ENGINEER`
++ `SERVICES`
++ `WORKER`
++ `SALESMAN`
++ `FARMER`
++ `OTHER`
+
+## ApplicationResponseSuccess (object)
++ applicationCode: `5743754843` (string, required) - application code returned after successful application form submitted
+
+## ValidationResponse (object)
++ status: `MATCHED` (enum, required) - whether input code match with verification or not
+    + `MATCHED`
+    + `NOT_MATCHED`
++ validationCount: 1 (number, required) - number of validation count remaining
+
+## VerificationRequest (object)
++ phoneNumber: `0906572306` (string, required) - phone number to verify and send verification SMS to
++ template: `1BOD template` (enum, optional) - template to use for message. If none is specified, default template is used.
+    + `1BOD template`
+    + `2BOD template`
+
+## Client (object)
++ name (FullName, fixed-type, required) - full name of client
++ salutation: Mr. (string, optional) - salutation, e.g. Mr. or Mrs.
++ gender: `MALE` (enum, required)
+    + `MALE`
+    + `FEMALE`
++ birthDate: `1978-02-15` (string, required) - date of birth
++ addresses (array[Address], fixed-type, required) - client addresses
++ phoneNumbers (array[VerifiedPhoneNumber], fixed-type, required) - client phone numbers
++ emails (array[Email], fixed-type, required) - all client emails
++ identificationDocuments (array[IdentificationDocument], fixed-type, required) - client identity documents, required at least 2 id documents
++ userAccount (UserAccount, fixed-type, optional) - info of registered user Account
+
+## ClientProfile (object)
++ name (FullName, fixed-type, required) - full name of client
++ salutation: Mr. (string, optional) - salutation, e.g. Mr. or Mrs.
++ gender: `MALE` (enum, required)
+    + `MALE`
+    + `FEMALE`
++ birthDate: `1978-02-15` (string, required) - date of birth
++ addresses (array[AddressResponse], fixed-type, required) - client addresses
++ phoneNumbers (array[VerifiedPhoneNumber], fixed-type, required) - client phone numbers
++ emails (array[Email], fixed-type, required) - all client emails
++ identificationDocuments (array[IdentificationDocument], fixed-type, required) - client identity documents, required at least 2 id documents
++ userAccount (UserAccount, fixed-type, optional) - info of registered user Account
++ numberofChildren: 1 (number, optional) - number of children
++ education (Education, optional) - highest degree of education
++ relatedPersons (array[RelatedPerson], fixed-type, required) - information of related people
++ employmentInfo (array[EmploymentResponse], fixed-type, required) - employment information
++ communicationInfo (array[Communication], fixed-type, optional) - communication information
+
+## ClientPrefill (object)
++ addresses (array[AddressResponse], fixed-type, required) - client addresses
++ phoneNumbers (array[PhoneNumber], fixed-type, required) - client phone numbers
++ emails (array[Email], fixed-type, required) - all client emails
++ identificationDocuments (array[IdentificationDocument], fixed-type, required) - client identity documents, required at least 2 id documents
++ numberofChildren: 1 (number, optional) - number of children
++ education (Education, optional) - highest degree of education
++ relatedPersons (array[RelatedPerson], fixed-type, required) - information of related people
++ employmentInfo (array[EmploymentResponse], fixed-type, required) - employment information
+
+## UserAccount (object)
++ userId: `1234` (string, required) - ID of userID in credential store
++ userName: `jdoe` (string, required) - active username of account
++ accountCreationDate: `2017-10-23` (string, required) - date account is created
++ passwordExpirationDate: `2017-05-01` (string, required) - valid password expiration date
++ usernameChangeAllowed: `true` (boolean, required) - username update is allowed or not
+
+## Address (object)
++ addressType: `CONTACT` (enum, required) - type of address
+   + `CONTACT` - Preferable contact address
+   + `PERMANENT` -Registration/permanent address
+   + `REGISTERED` - Contact address
+   + `TEMPORARY` - Current/Temporary address
++ streetAddress: `Le Loi` (string, required) - street
++ streetNumber: `5` (string, required) - street number
++ region: `Ho Chi Minh city` (string, required) - city/province
++ district: `Binh Thanh` (string, required) - district
++ town: `Tan Phu` (string, required) - ward
+
+## AddressResponse (object)
++ addressType: `CONTACT` (enum, required) - type of address
+   + `CONTACT` - Preferable contact address
+   + `PERMANENT` -Registration/permanent address
+   + `REGISTERED` - Contact address
+   + `TEMPORARY` - Current/Temporary address
++ streetAddress: `Le Loi` (string, required) - street
++ streetNumber: `5` (string, required) - street number
++ regionCode: `AG` (string, required) - region code
++ regionName: `An Giang` (string, required) - region name
++ districtCode: `AG_AP` (string, required) - district code
++ districtName: `H. An Phú` (string, required) - district name
++ townCode: `AG_AP_1` (string, required) - town code
++ townName: `TT. An Phú` (string, required) - town name
++ countryCode: `704` (string, required) - code of country
+
+## EmploymentResponse (object)
++ economicalStatus (EconomicalStatus, required)
++ employerInfo (EmployerInfoResponse, optional)
++ monthlyIncome (AmountCurrency, optional)
++ monthlyPaymentLoan (AmountCurrency, optional)
+
+## EmployerInfoResponse (object)
++ name: `HCVB` (string, required) - company name
++ profession (Profession, fixed-type, required) - job of applicant
++ employedFrom: `2010-10-20` (string, required) - start date of employment
++ employerAddress (AddressResponse, fixed-type, optional) - employment address
+
+## FullName (object)
++ firstName: `John` (string, required) - user first (given) name
++ middleName: `Peter` (string, optional) - middle names
++ lastName: `Doe` (string, required) - user family name
+
+## FullNameSimplified (object)
++ firstName: `John` (string, required) - user first (given) name
++ middleName: `Peter` (string, optional) - middle names
++ lastName: `Doe` (string, required) - user family name
+
+## PhoneNumber (object)
++ phoneType: `PRIMARY_MOBILE` (enum, required) - type of phone
+   + `PRIMARY_MOBILE`
+   + `SECONDARY_MOBILE`
+   + `HOME_PHONE`
+   + `PHONE`
+   + `EMPLOYMENT_PHONE`
+   + `OTHER_PHONE`
+   + `ADDITIONAL_PHONE`
+   + `ALTERNATIVE_PHONE`
+   + `CONTACT_PHONE`
+   + `MOBILE_PHONE`
+   + `WORKING_PHONE`
++ number: `123456789` (string, required) - phone number
++ extension: `123` (string, optional) - extension of phone type
+
+## VerifiedPhoneNumber (object)
++ Include PhoneNumber
++ verificationID: `I5ABCAD2FM4quABCAD2B` (string, optional) - id of succesffully generated verification code
+
+## Email (object)
++ type: `PRIMARY_EMAIL` (enum, required) - type of email
+   + `PRIMARY_EMAIL`
+   + `OTHER_EMAIL`
++ value: `johndoe@example.com` (string, required) - client e-mail address
+
+## IdentificationDocument (object)
++ type: `ID_CARD` (enum, required) - identity document type
+   + `ID_CARD`
+   + `FAMILY_BOOK`
+   + `DRIVERS_LICENSE`
++ number: `123456748` (string, required) - identity document number
++ filename: `ID.gif` (string, optional) - photo taken file name
++ content: `content of image`(string, optional) - content of document image converted to BASE64
++ contents (array, fixed-type, optional) - photo taken file name of documents
+   + (FileContents)
+   + (FileContents)
+        + filename: `ID_BackSide.jpg`
+        + pageSide: `BACK_PAGE`
++ note: `note for document`(string, optional) - note of document
+
+## IdentificationDocumentSimplified (object)
++ type: `ID_CARD` (enum, required) - identity document type
+   + `ID_CARD`
+   + `FAMILY_BOOK`
+   + `DRIVERS_LICENSE`
++ number: `123456748` (string, required) - identity document number
+
+## FileContents (object)
++ filename: `ID_FrontSide.jpg` (string, required) - photo taken file name
++ content: `content of image`(string, required) - content of document image converted to BASE64
++ pageSide: `FRONT_PAGE` (enum, optional) - page side of ID card photo
+   + FRONT_PAGE
+   + BACK_PAGE
+
+## RepaymentInformation (object)
++ One Of
+    + celRepay (CELRepaymentInfo, optional) - repayment info of CEL
+    + relRepay (RELRepaymentInfo, optional) - repayment info of REL
+
+## AllRepaymentInformation (object)
++ fullName: `Nguyen Van A` (string, required) - fullname of client
++ identificationNumber: `024705381` (string, required) - id number of client
++ Include RepaymentInformation
+
+## CELRepaymentInfo (object)
++ totalDebt (AmountCurrency, required) - total debt (maximum amount customer can pay)
++ penaltyAmount (AmountCurrency, optional) - penalty amount
++ prepaymentAmount (AmountCurrency, optional) - prepayment amount
++ dueAmount (AmountCurrency, required) - amount to pay
++ dueDate: `2019-12-03` (string, optional) - due date
++ overDueNumber: 2 (number, optional) - number of overdue installments
++ repayInfoDetail: (RepaymentInfoDetail, optional)
+
+## RELRepaymentInfo (object)
++ creditLimit (AmountCurrency, required) - credit limit
++ totalPayment (AmountCurrency, required) - maximum amount to pay
++ minimumAmount (AmountCurrency, required) - minimum amount to pay
+
+## EarningEvent (object)
++ type: `POS` (string, required) - original transaction event
++ value: 10000000 (number, required) - original transaction amount
++ currency: `VND` (string, required) - country currency
+
+## Communication (object)
++ communicationChannel: `PREFERRED_COMMUNICATION` (enum, optional) - communication channel
+    + PROMOTIONS
+    + PREFERRED_COMMUNICATION
++ communicationType: (array[CommunicationType], fixed-type, optional) - type of communication
++ latestModifiedDate (LatestModifiedDate, optional) - The latest modified date of each communication channel type
+
+## CommunicationType (object)
++ type: `SMS` (enum, optional) - communication channel
+    + SMS
+    + CALL
+    + APPLICATION
+    + EMAIL
+    + SOCIAL_NETWORK
+    + POST
+
+## LatestModifiedDate (object)
++ sms: `2020-09-17T10:56:11.619Z` (string, optional) - Modified date of SMS channel
++ call: `2020-09-17T10:56:11.619Z` (string, optional) - Modified date of CALL channel
++ application: `2020-09-17T10:56:11.619Z` (string, optional) - Modified date of APPLICATION channel
++ email: `2020-09-17T10:56:11.619Z` (string, optional) - Modified date of EMAIL channel
++ socialNetwork: `2020-09-17T10:56:11.619Z` (string, optional) - Modified date of SOCIAL_NETWORK channel
++ post: `2020-09-17T10:56:11.619Z` (string, optional) - Modified date of POST channel
+
+## OverDueInfo (object)
++ dueAmount: (AmountCurrency, optional) - overdue amount
++ dueDate: `2019-12-03` (string, optional) - due date of overdue debt
+
+## NextDueInfo (object)
++ dueAmount: (AmountCurrency, optional) - next due amount
++ dueDate: `2020-1-03`  (string, optional) - due date of next due
+
+## RepaymentInfoDetail (object)
++ overDue: (OverDueInfo, optional) - overdue debt info. Only for case that has overdue debt
++ nextDue: (NextDueInfo, optional) - next due info
+
+## CardInformation (object)
++ cardType: `PERSONALIZED` (enum, required) - type of card
+    + PERSONALIZED - Persionalize issuance card, present customer's embossed name
+    + INSTANT - On the spot issuance card with default embossed name
++ statementChannel: `EMAIL` (enum, required) - statement delivery statementChannel
+    + EMAIL - Statement will be delivered to customer's email address
+    + POST_OFFICE - Statement will be delivered to customer contact address
+    + NONE
++ securityQuestion (SecurityQuestion, required)
+
+## SecurityQuestion (object)
++ question: `MOTHER` (enum, required)
+    + FATHER
+    + MOTHER
+    + SPOUSE
+    + COMPANY
+    + NICKNAME
+    + HIGH_SCHOOL_NAME
++ answer: `mother's name` (string, required)
+
+## Status (enum)
++ `WAITING_FOR_PRE-APPROVAL`
++ `PRE-APPROVED`
++ `WAITING_FOR_APPROVAL`
++ `APPROVED`
++ `SIGNED`
++ `REJECTED`
++ `CANCELLED`
+
+## AdditionalInfo (object)
++ name: `info name` (string, required) - additional info name
++ value: `info detail` (string, required) - additional info detail
+
+
+# Data Structures
+
+## Contract (object)
++ contractNumber: `12345678` (string, required) - ID of a contract
++ contractType: `CLOSE_END_LOAN` (enum, required) - contract type
+   + `CLOSE_END_LOAN`
+   + `REVOLVING_LOAN`
++ applicationCreatedAt: `2016-01-01` (string, required) - date when application was created
++ approvedAt: `2016-01-20` (string, optional) - date when contract was created
++ signedAt: `2016-01-25` (string, required) - date when contract was signed
++ status: `ACTIVE` (enum, required) - status of contract
+    + `SIGNED` - contract has been signed and is valid
+    + `ACTIVE` - contract is active
+    + `FINISHED` - contract has been closed
+    + `PAID_OFF` - contract is paid off
+    + `WRITTEN_OFF` - contract is written off
++ saleroomName: `Viễn Thông A Phú Nhuận` (string, required) - name of a saleroom
++ lenderCode: `ABB` (string, optional) - Entrustment Lending partner
++ productCode:`CCX_INI_0001` (string, required) - code of product
++ commodities (array[commoditiesInfo], fixed-type, optional) - commodity information
++ services (array[ServiceInfo], fixed-type, optional]) - service info
++ insurance: true (boolean,required) - Insurance Flag
++ insurances (array[insuranceInfo], fixed-type, optional]) - insurance info
++ initialTransactionType: `CASH` (enum, required) - type of initial transaction
+   + `POS` - PURCHASE transaction
+   + `CASH` - CASH transation
+   + `NOT_DEFINED` - NDF for REL x-sell contract without initial transaction
++ currentDPD: 0 (number, optional) - current day past due of contract
++ totalOutstandingDebt (AmountCurrency, fixed-type, optional) - Outstanding debt on credit account, i.e. all overdue and still not prescribed future debt
++ One Of
+   + relInfo (RELAdditionalInfo, fixed-type, required) - additional info of REL only
+   + celInfo (CELAdditionalInfo, fixed-type, required) - additional info of CEL only
+
+## ContractCodes (object)
++ contractNumber: `12345678` (string, required) - ID of a contract
++ contractType: `CLOSE_END_LOAN` (enum, required) - contract type
+   + `CLOSE_END_LOAN`
+   + `REVOLVING_LOAN`
+
+## CELAdditionalInfo (object) - parameters for CEL only
++ tenor: 10 (number, optional) - number of installment of contract when signed
++ firstInstallmentDueDate: `2017-02-27` (string, required) -  due date of this contract, in case client has more than 1 contract, it should be the merged due date of client
++ lastInstallmentDueDate: `2017-02-27` (string, optional) -  last expected due date of current loan
++ creditAmount (AmountCurrency, fixed-type, required) - total amount a client ask for loan, including insurance amount
++ downPaymentAmount (AmountCurrency,fixed-type, required) - total down payment amount of  a client
++ monthlyInstallmentAmount (AmountCurrency, fixed-type, required) - monthly installment amount a client need to repay
++ presentedInterestRate: 2.96 (number, required) - monthly presented interest rate in percent
++ disburseAmount (AmountCurrency, optional) - amount to be disbursed
++ disbursementChannel: `GENERAL_BANK_ACCOUNT` (enum, optional)
+    + `GENERAL_BANK_ACCOUNT` - General bank account, i.e. customer's own bank account
+    + `PARTNER_BANK` - Payment provider bank account, i.e. Momo e-wallet
+    + `SALESROOM_BANK_ACCOUNT` - Retailer bank account
+    + `CARD_ACCOUNT` - Card account
++ recipientBank (bankInfo, optional) - bank information
++ disbursedCard: `1234********5678` (string, optional) - number of card to disbursed (only for CARD_ACCOUNT)
++ disbursementStatus: `PAID` (enum, optional) - status of disbursement
+    + `PAID`
+    + `UNPAID`
+
+## RELAdditionalInfo (object)- parameters for REL only
++ accountNumber: `12345678` (string, required) - ID of an account
++ accountStatus: `ACTIVE` (enum, optional) - status of account
+   + `ACTIVE`
+   + `CANCELLED`
+   + `PENDING_CLOSE`
+   + `CLOSED`
++ creditLimit (AmountCurrency, fixed-type, required) - credit limit amount of an account
++ billingDate: `15` (string, optional) - date generated when contract is signed
++ availableBalance (AmountCurrency, fixed-type, optional) - current available amount of client account
++ holdBanlance (AmountCurrency, fixed-type, optional) - current hold amount of client account
++ ledgerBalance (AmountCurrency, fixed-type, optional) - current ledger amount of client account
++ minimumInstallment (AmountCurrency, fixed-type, optional) - minimum installment amount after billing date is reached
++ interestOfCashlessTransaction: 2.96 (number, optional) - month charged interest of cashless transaction in percent
++ termination: `true` (boolean, optional) - is contract waiting for termination process
++ nextDue: (NextDueInfo, optional) - next due info
+
+## ServiceInfo (object)
++ serviceType: `GRREL` (string, optional) - service type
++ serviceCode: `CC_GR _45` (string, optional) - service code
++ serviceName: `Grace period for MAX CARD` (string, optional) - service name
++ serviceDescription: `Grace period for MAX CARD` (string, optional) - service description
++ validFrom: `2020-08-20T00:00:00.000+07:00` (string, optional)
+
+## bankInfo (object)
++ bankName: `CONG TY TAI CHINH PRUDENTIAL VIET NAM` (string, optional) - name of bank
++ branchName: `CONG TY TAI CHINH PRUDENTIAL VIET NAM HOI SO CHINH` (string, optional) - name of branch
++ accountNumber: `0421003742725` (string, optional) -
++ accountHolder: `CONG TY CO PHAN DICH VU DI DONG TRUC TUYEN` (string, optional) - name of account account holder
+
+## Card (object)
++ cardNumber: `1234********5678` (string, required) - PAN of credit card 16 digits
++ cardEmbossName: `NGUYEN VAN A` (string, required) - name on card
++ cardStatus: `INACTIVE` (enum, required) - status of card
+   + `INACTIVE`
+   + `ACTIVE`
+   + `BLOCKED`
+   + `LOST`
+   + `STOLEN`
+   + `CANCELLED`
++ cardType: `INSTANT_CARD` (string, required) - type of card
++ activeFrom: `2016-11-15` (string, optional) - date of card activation
++ validTo: `2017-11-15` (string, required) - date of card expiration
++ pcid: `1190` (string, required) - pcid number of card
++ ecommerceAllowed: `true` (boolean, optional) - ecommerce transaction is allowed or not
++ onlinePurchaseAllowed: `true` (boolean, optional) - online purchase is allowed or not
++ blockedByCustomer: `true` (boolean, optional) - card is blocked by customer (true) or other reasons (false)
++ lastPINChange: `2017-11-15` (string, optional) - date of last PIN change
++ cardReplacementEligible: `true` (boolean, optional) - whether this card is eligible (true) or ineligible (false) for replacement
+
+## activationResult (object)
++ activationResult: `SUCCESS` (string, required) - activationResult
+
+## PaymentHistory (object)
++ paymentId: `1224` (string, required) - id of payment, will be used for paging
++ paymentDate: `2017-11-15` (string, required) - date a payment made
++ paymentAmount (AmountCurrency, fixed-type, required) - payment value
++ paymentSource: `ZAP` (string, required) - payment source
+
+## Installment (object)
++ installmentNumber: `101` (string, required) - the installment number
++ installmentType: `STANDARD` (enum, required) - name of the installment
+   + `STANDARD` - standard installment of CEL only, i.e: principal, fee, interest
+   + `REGULAR`  - regular instalment prescribed by EOM of REL only
+   + `EXTRAORDINARY`- extra installment of CEL only, i.e: penalty, prepayment, overdue
+   + `ADDITIONAL` - additional payment instalment of REL only
+   + `EXTRA` - early repaid of CEL only
+   + `PAYOFF` - terminated installment of CEL only, i.e: principal terminated, interest terminated, fee terminated
++ installmentSubtype: `PREPAYMENT` (enum, optional) - type of the installment
+   + `PRINCIPAL_TERMINATED`
+   + `PREPAYMENT`
+   + `PENALTY`
+   + `OVERPAYMENT`
+   + `INTEREST_TERMINATED`
+   + `INTEREST_FUTURE`
+   + `FEE_TERMINATED`
+   + `PRINCIPAL_INTEREST_FEE`
++ dueDate: `2016-11-15` (string, required) - installment date due
++ dueAmount (AmountCurrency, fixed-type, required) - installment amount due
++ isPaid: `false` (boolean, required) - installment is fully paid or not?
+
+## NextInstallment (object)
+   + nextDueDate: `2016-11-15` (string, optional) - installment next date due
+   + nextDueAmount (AmountCurrency, fixed-type, optional) - amount of next due
+
+## Transaction (object)
++ transactionId: `10` (string, required) - id of transaction
++ transactionType: `ATM` (string, required) - type of transaction
++ description: `SUPERMARKET MAKRO CENTER, ALMATY, VN` (string, required) - description of transaction
++ transactionDirection: `DEBIT` (enum, required) - direction of transaction
+   + `DEBIT` - outgoing transaction, money is taken out of the account
+   + `CREDIT` - incoming transaction, money is added to your account
++ transactionDate: `2017-11-15` (string, required) - date a transaction made
++ bookingDate: `2017-11-15` (string, optional) - date a transaction is charged to account
++ amount (AmountCurrency, required) - transaction amount
++ isHold: `false` (boolean, required) - a flag showing whether transaction is processed or on hold. `false` - transaction is processed, `true` - transaction is on hold
++ authorizationStatus: `CANCELLED` (string, optional) - authorization status of transaction which is on hold. Possible values: CANCELLED, APPROVED
++ merchantCategoryCode: `5999` (string, optional) - merchant category code
++ mccDescription: `Miscellaneous and Specialty Retail Stores` (string, optional) - mcc description
++ cancellation (object, optional)
+   + isCancelled: `false` (boolean, optional) - cancellation status
+   + cancelledDate: `2017-11-15` (string, optional) - date cancellation made, only available if cancelled is set to true
+   + cancellationReason: `REVERSAL` (enum, optional) - reason of cancellation, only available if cancelled is set to true
+      + `REVERSAL`
+      + `CHARGE_BACK`
+      + `MANUAL`
+      + `RECALCULATION`
+      + `CONTRACT_CANCEL`
+      + `EXPIRATION`
+      + `ADJUSTMENT`
+      + `TRANSFER_TO_IP`
+      + `TRANSFER_BACK_TO_CARD`
+      + `COOLING_OFF`
+      + `IP_CANCEL`
++ paymentPlanInfo (PaymentPlanInfo, optional) - payment plan information
+
+## PaymentPlanInfo (object)
++ paymentPlanId: `995709` (string, optional) - Equal payment plan transaction ID
++ installmentPlanId: `1156400530490015744` (string, optional) - installment plan ID
++ ipEligible: `true` (boolean, optional) - whether transaction is eligible for tranfering to Installment Plan
++ conversionRate: `1` (number, optional) - conversion Rate used to convert from original to billing amount
++ conversionEndDate: `2019-09-04` (string, optional) - expire date for installment plan transfer
++ billingPeriodStartDate: `2019-07-25` (string, optional)  - inclusive billing period start date
++ sourceEvent: (SourceEvent, optional) - event info of each transaction
+
+## Statement (object)
++ statementId: `10` (string, required) - id of statement
++ billingStartDate: `2017-11-15` (string, optional) - date of card expiration
++ billingEndDate: `2017-11-15` (string, optional) - date of card expiration
+
+## RecalculatePhoneNumber (object)
++ phoneNumber: `123456789` (string, required) - phone number
++ verificationID: `I5ABCAD2FM4quABCAD2B` (string, required) - id of succesffully generated verification code
+
+## MyDocument (object)
++ documentId: `I5ABCAD2FM4quABCAD2BAAlUVpE6tkNAKLA` (string, required) - id of statement
++ filename: `INSURANCE_CONTRACT_PRINTOUT.pdf` (string, optional) - file name of document
++ typeDocument: `INS_GOODS_AAA` (string, optional) - type of document
++ createdDate: `2018-08-07` (string, optional) - date document is created
+
+##RegisterDocResult
++ noOfDocument: 3 (number, required) - Number of registered document
++ noOfType: `ARBITRATION,INS_GIC_LIFE` (string, required) - Number of registered type document
+
+## Applications (object)
++ applicationNumber: `35039383` (string, required) - contract number
++ status: `APPROVED` (enum, required) - Application status
+   + SIGNED
+   + APPROVED
+   + REJECTED
+   + PRE_PROCESS
+   + PROCESS
+   + CANCELLED
++ subStatus: `NPS - Not prepared for sign` (string, optional) - sub-status of application
++ productCode: `TW033-01` (string, required)  - Product Code
++ type: `CEL` (string, required) - Product type
++ amount (AmountCurrency, required) -  Loan Amount (CEL)/ Credit Limit (REL)
++ lenderCode: `ABB` (string, optional) - Entrustment Lending partner
+
+## ApplicationCodes
++ applicationNumber: `4004496884` (string, required) - contract number
+
+## ApplicationDetail (object)
++ fullName: `Jame Bond` (string, required)  - Customer Name
++ applicationID: `35039383` (string, required) - contract number
++ primaryPhone: `123456789` (string, required) - phone number
++ email: `test@test.com` (string, optional) - Email
++ createdDate: `2017-10-23` (string, required) - Application created date
++ signedDate: `2017-10-23` (string, optional) - Application signed date
++ status: `APPROVED` (enum, required) - Contract status
+   + SIGNED
+   + APPROVED
++ lenderCode: `ABB` (string, optional) - Entrustment Lending partner
++ productCode: `CLW-OL` (string, required)  - Product Code
++ commodites (array[commodityInfo], fixed-type, optional) - commodity
++ insurance: 'Y' (enum,required) - Insurance Flag
+   + Y - Yes
+   + N - No
++ insurances (array[insuranceInfo], fixed-type, optional]) - insurance info
++ monthlyInstalmentAmount (AmountCurrency, optional) - Monthly Instalment Amount
++ monthlyDueDate: `2017-10-23` (string, optional) - Monthly Due Date
++ monthlyDueDay: `24` (string, optional) - monthly due day
++ One Of
+   + celApplicationInfo (celApplicationInfo, fixed-type, optional) - additional info of CEL only
+   + relApplicationInfo (relApplicationInfo, fixed-type, optional) - additional info of REL only
+
+## commoditiesInfo (object)
++ type: `CT_MOBILE_1` (string, required) - type code of commidity
++ name: `name of commodity` (string, optional) - name of commodity
++ manufacturer: `VIVO` (string, optional) - manufacturer of commodity
++ modelNumber: `VIVO Y12 64GB 0%` (string, optional) - model commodity, input in case select manufacturer
++ imei: `869603650191605` (string, optional) - imei number of commodity
+
+##insuranceInfo
++ insuranceType: `INSLI` (string, optional) - Insurance Type
++ insuranceCode: `LI_PTI_1` (string, optional) - Insurance ID
++ insuranceAmount (AmountCurrency, optional) - amount of insurance
+
+##commodityInfo
++ productBranch: `Samsung` (string, optional)  - Product Branch
++ productModelL:`J3` (string, optional)  - Product Model
++ goodsPrice(AmountCurrency, optional) - Goods Price
+
+##celApplicationInfo
++ creditAmount (AmountCurrency, required) - Credit Amount
++ downPaymentAmount (AmountCurrency, required) - Down Payement Amount
++ presentedInterestRate: 0.45 (number, optional) - annual presented interest rate
++ disbursementAmount (AmountCurrency, optional) -Disbursement Amount
++ firstDueDate: `2018-06-08` (string, optional) - First Due Date
++ lastDueDate: `2018-09-21` (string, optional) - Last Due Date
++ firstInstallmentAmount (AmountCurrency, optional) - amount customers need to pay in first installment
+
+##relApplicationInfo
++ creditLimit (AmountCurrency, optional) - Credit Limit
++ ictLimit (AmountCurrency, optional) -ICT Limit
++ openToBuyLimit (AmountCurrency, optional) - Open to buy Limit
++ cardInterestRate:  0.45 (number, optional) - annual card interest rate
++ monthlyInstalmentAmount (AmountCurrency, optional) - Monthly Instalment Amount
+
+## Communications (object)
++ communicationChannel: `Outgoing email` (string, required) - channel of communication
++ communicationType: `Information` (string, required) - type of communication
++ communicationSubtype: `Others` (string, required) - subtype of communication
++ communicationUsedContact: `kytructuyen@homecredit.vn` (string, required) - contact to communicate (phone, email)
++ communicationNote: `Ky HD` (string, required) - note of communication
+
+## ApplicationOffer (object)
++ offerCode: `1231123` (string, required) - Key for unique identification of particular offer
++ offerProduct (OfferProduct, required) - product included in offer
++ termsAndConditions (Terms, required) - terms and conditions information
++ installments (array[OfferInstallment], fixed-type, required) - list of installments
++ fees (array[FeeInformation], fixed-type, required) - list of fees in offer
++ services (array[OfferService], fixed-type, required) - list of services in offer
++ commodities (array[OfferCommodity], fixed-type, required) - list of commodities in offer
++ totalPrice (AmountCurrency, optional) - total price of offer
++ cashPayment (AmountCurrency, optional) - cash payment of offer
++ downPayment (AmountCurrency, optional) - down payment of offer
++ terms: 6 (number, optional) - term of offer
++ totalInstallment (AmountCurrency, optional) - total installment of offer
++ loanAmount (AmountCurrency, optional) - loan amount of offer
++ netCreditLimit (AmountCurrency, optional) - net credit limit of offer
++ providedCreditLimit (AmountCurrency, optional) - provided credit limit of offer
++ minimalInstallmentAmount (AmountCurrency, optional) - minimal installment amount of offer
++ totalPaymentPerCredit (AmountCurrency, optional) - total payment per credit of offer
++ annualInterestRate: 12.6 (number, optional) - annual interest rate of offer
++ relInterestRates (array[RelInterestRate], fixed-type, required) - interest rate in case of rel
++ presentedInterestRate1: 12.6 (number, optional)
++ presentedInterestRate2: 12.6 (number, optional)
++ presentedInterestRate3: 12.6 (number, optional)
++ totalInsurancePremium (AmountCurrency, optional)
++ sufficientDocument: `false` (boolean, optional)
++ type: `ALTERNATIVE` (enum, required)
+    + `ALTERNATIVE` - alternative offer
+    + `PRIMARY` - primary offer
++ active: `true` (boolean, required)
++ chosen: `true` (boolean, required)
++ lastEvaluationResult: `APPROVED` (enum, optional)
+    + `APPROVED`
+    + `FAILED`
+    + `REJECTED`
+    + `CANCELLED`
+
+## OfferProduct (object)
++ productCode: `CD_TEST2.4` (string, required) - code of product
++ productName: `CD TEST HOSEL 2.4` (string, required) - name of product
++ productVariantCode: `CD_TEST2.4-01` (string, required) - variant code of product
++ productProfile: `PP_CD` (string, required) - profile of product
++ productType: `CLOSE_END_LOAN` (enum, required) - contract type
+   + `CLOSE_END_LOAN`
+   + `REVOLVING_LOAN`
++ preference: 5 (number, required)
++ initialTransactionType: `CASH` (enum, required) - type of initial transaction
+   + `POS` - PURCHASE transaction
+   + `CASH` - CASH transation
+   + `NOT_DEFINED` - NDF for REL x-sell contract without initial transaction
+
+## Terms (object)
++ code: `VN_COL` (string, required) - code of terms
++ name: `Điều kiện cho vay tiêu dùng` - name of terms
+
+## OfferInstallment (object)
++ installmentNumber: `1` (string, required) - the installment number
++ dueDate: `2016-11-15` (string, required) - installment date due
++ principalAmount (AmountCurrency, required) - principal amount due
++ interestAmount (AmountCurrency, required) - interest amount due
++ feeAmount (AmountCurrency, required) - fee amount due
+
+## FeeInformation (object)
++ code: `TITF_MONTHLY_FEE` (string, required) - code of fee
++ name: `Phi thanh toan qua ngan hang` (string, required) - name of fee
++ amount (AmountCurrency, required) - amount of fee
++ service: `service` (string, optional) - service type of fee
+
+## OfferService (object)
++ type: `LOAN_OPTIONS` (enum, required) - type or category of services
+   + `INSURANCE`
+   + `LOAN_OPTIONS`
+   + `PAYMENT_CARD`
++ typeCode: `GRPER` (string, required) - code of service type
++ typeName: `GRACE_PERIOD` (string, required) - name of service type
++ code: `GRACE-3` (string, required) - code of service
++ name: `3-month Free` (string, required) - name of service
++ description: `If client repays all debit till 3rd installment, no interest will be charged.` (string, optional) - description of service
++ insurance (InsuranceProgram, optional) - insurance program if service is insurance
++ relipOffers (array[RelIPOffer], fixed-type, optional)
++ chosen: `true` (boolean, optional) - ONLY for insurance service opt-in or not
+
+## InsuranceProgram (object)
++ code: `LI_GIC` (string, required) - code of insurance program
++ name: `Bảo hiểm Người vay tín dụng` (string, required) - name of insurance program
++ description: `Thay mặt công ty bảo hiểm GIC giới thiệu, chào bán sản phẩm bảo hiểm trên phạm vi lãnh thổ Việt Nam` (string, required) - description of insurance program
+
+## RelIPOffer (object)
++ offerrelipCode: `1232131` (string, required)
++ term: 6 (number, required)
++ AIR: 12.6 (number, required)
++ initTerm: 6 (number, optional)
++ initAIR: 12.6 (number, optional)
++ totalMonthlyPayment (AmountCurrency, required)
++ totalPaymentPerCredit (AmountCurrency, required)
++ totalPrincipal (AmountCurrency, required)
++ totalInterest (AmountCurrency, required)
++ totalFee (AmountCurrency, required)
+
+## OfferCommodity (object)
++ type: `CT_AUDIO` (string, required) - commodity type
++ price (AmountCurrency, required) - commodity price
++ manufacturer: `Apple` (string, optional) - commodity manufacturer
++ model: `Iphone X` (string, optional) - commodity model
++ sku: `123123` (string, optional) - commodity SKU
+
+## RelInterestRate (object)
++ name: `Lãi giao dịch không phải giao dịch rút tiền mặt` (string, required)
++ limitNumberBasedOn: `OP` (string, optional)
++ limitNumberFrom: 1 (number, optional)
++ limitNumberTo: 2 (number, optional)
++ limitAmountBasedOn: `OP` (string, optional)
++ limitAmountFrom: 1 (number, optional)
++ limitAmountTo: 2 (number, optional)
++ interestRate: 4.1 (number, required)
++ interestBasedOn: `OP` (string, required)
+
+## OfferServiceUpdate (object)
++ services (array[ServiceChange], fixed-type, required) - service to be updated
+
+## ServiceChange (object)
++ code: `LIGOOD_GIC` (string, required) - service code to be updated
++ chosen: `true` (boolean, required) - status updated
+
+## ServiceChangeResponse (object)
++ offerCode: `1231123` (string, required) - Key for unique identification of particular offer
++ services (array[OfferService], fixed-type, required) - list of services in offer
+
+## MarketingOffer (object)
++ offerID: `17360646` (string, required) - offerID of offerID
++ offerPriority: `3` (string, required) - priority of offer
++ offerType: `PRODUCT` (string, required) - type of offer
++ offerData (OfferData, required) - offer information
+
+## OfferData (object)
++ offerName: `Hosel prt` (string, required) - name of offer
++ campaignID: `7699` (string, required) - campaign ID which offer belongs to
++ campaignType: `ST` (string, required) - type of campaign
++ campaignSubtype: `1` (string, required) - subtype of campaign
++ validFrom: `2018-08-16` (string, required) - date which offer is valid from
++ validTo: `2018-08-17` (string, required) - date which offer is valid to
++ productType: `CLX` (string, required) - product type of offer
++ minimalCashPayment (AmountCurrency, required) - minimum amount of down payment that customer needs to make
++ maximalCreditAmount (AmountCurrency, required) - maximum credit amount that customer is offered
++ maximalMonthlyInstallment (AmountCurrency, required) - maximum monthly installment amount that customer needs to payment
++ interestRate: `4.3` (string, required) - interest rate that customer is offered
++ minimalBalance (AmountCurrency, required)
+
+## ProductOfferRequest (object)
++ loanType: `GOODS_LOAN` (enum, required) - loan request is goods purchasing or cash loan
+   + `GOODS_LOAN`
+   + `CASH_LOAN`
+   + `REL_LOAN`
++ commodities (array[Commodity], fixed-type, optional) - commodities specified in loan request in case of isPurchased is true
++ requestedLoanAmount (AmountCurrency, fixed-type, optional) - Preferred loan amount (for cash loan & rel)
++ maxCashPayment (AmountCurrency, fixed-type, optional) - maximum amount of cash payment from customer
++ maxMonthlyPayment (AmountCurrency, fixed-type, optional) - maximum monthly payment amount
++ maxTenor: 48 (number, optional) - maximum tenors, terms to repay loan; will not return Revolving Loan
++ hasGoodsInsurance: `ANY` (enum, optional) - offer has goods insurance service
+   + `ANY` - NO_PREFERENCE
+   + `YES` - REQUIRED
+   + `NO` - REFUSED
++ hasLifeInsurance: `ANY` (enum, optional) - offer has life insurance service
+   + `ANY` - NO_PREFERENCE
+   + `YES` - REQUIRED
+   + `NO` - REFUSED
++ hasSMSNotification: `ANY` (enum, optional) - offer has sms notification service
+   + `ANY` - NO_PREFERENCE
+   + `YES` - REQUIRED
+   + `NO` - REFUSED
++ campaignID: `72317` (string, optional) - ID of campaign
+
+## RewardInfo (object)
++ status: `ACTIVE` (enum, required) - status of card account
+    + `ACTIVE` - account is active
+    + `TERMINATED` - account is terminated
+    + `TERMINATION_PENDING` - account termination request has been made
+    + `CANCELLED` - account is cancelled
++ availablePoints: 1 (number, optional) - reward point available to spend
++ spendingStep: 1000 (number, optional) - spending point step for each spending attempt
+
+## LoyaltyInfo
++ transactionId: `10` (string, required) - id of transaction
++ earningType: `ACTIVE` (enum, optional) - earning type of earning transaction
+    + ACTIVE - redemable earning point
+    + BURNT - burn earning point which excess maximum earning per cyle/ transaction
++ spendingType: `CREDIT_ACCOUNT_MONEY_BACK` (enum, optional) - spending type of spending transaction
+    + CREDIT_ACCOUNT_MONEY_BACK - received points are transferred to client’s card account in a ccurrency
+    + BURNT - burn spending point which excess spending per cycle/ transaction
+    + EXPIRED - expired point
++ earningCategory: `AUTO` (enum, optional) - earning category of earning transaction
+    + AUTO - earning generated by system
+    + ADJUSTMENT - manual abjust earning point due to not calculated correctly by system or process issue
+    + TERMINATION - earning point is terminated due to account/transaction termination
++ spendingCategory: `MANUAL` (enum, optional) - spending category of spending transaction
+    + AUTO - system automatically Spend
+    + AUTO_DIRECT_DIRECT_AUTOMATIC_SPENDING - system automatically Spend
+    + ADJUSTMENT - manual abjust spending point due to not calculated correctly by system or process issue
+    + MANUAL - spending transaction performed by customer care based on customer request
+    + TERMINATION - spending point is terminated due to account/ transaction terminination
++ earningEvent: (EarningEvent, optional) - original transaction for earning
++ transactionAmount: (AmountCurrency, required) - transaction amount
++ transactionDate: `2019-08-07` (string, required) - transaction date
++ billingCycle: `2019-07` (string, required) - billing cycle
+
+## EppTransactionDetail
++ paymentPlanId: `995709` (string, optional) - Equal payment plan transaction ID
++ transactionId: `1156422994775392256` (string, optional) - Source transaction ID
++ transactionDate: `2019-09-04` (string, optional) - transaction date
++ billingDate: `2019-09-04` (string, optional) - date transaction amount settle to account to account debt
++ installmentPlanId: `1156400530490015744` (string, optional) - installment plan ID
++ conversionRate: `1` (number, optional) - conversion Rate used to convert from original to billing amount
++ conversionEndDate: `2019-09-04` (string, optional) - expire date for installment plan transfer
++ billingPeriodStartDate: `2019-07-25` (string, optional)  - inclusive billing period start date
++ ipEligible: `true` (boolean, optional) - whether transaction is eligible for tranfering to Installment Plan
++ sourceEvent: (SourceEvent, optional) - event info of each transaction
+
+## IpOffer
++ offerCode: `1154335410322554880` (string, required) - installment plan set up code
++ numberOfInstallment: `12` (number, required) - tenor of installment plan
++ interestRate: `0` (number, required) - interest rate of installment plan
++ monthlyInstallmentAmount: (AmountCurrency, required) - number of amount need to install monthly
++ conversionFee: (AmountCurrency, optional) - conversion fee
++ originationFee: (AmountCurrency, optional) - origination fee
+
+## ConvertIpRequest
++ offerCode: `1154335410322554880` (string, required) - installment plan set up code
+
+## SourceEvent
++ sourceName: `CARD` (enum, optional)
+    + CARD
+    + ACCOUNT
+    + BSL
+    + COLLECTION
+    + HCPAY
+    + IB
+    + INC_PAY
+    + LRP
+    + OBS
+    + PARTNER_NET
+    + RISK
++ sourceId: `CARDEVENT_9731833004` (string, optional)
+
+## MarketingOfferv2 (object)
++ offerId: `0a13878c-6d8c-1a87-816d-909917b30054` (string, optional) - offer id
++ offerPriority: `3` (number, required) - priority of offer
++ offerType: `SCORING OFFER` (string, required) - type of offer
++ lenderCode: `ABB` (string, optional) - Entrustment Lending partner
++ offerData: (MarketingOfferData, required) - offer details
+
+## MarketingOfferData (object)
++ productOffer: `CLOSE_END_LOAN` (enum, required) - product type of offer
+   + `CLOSED_END_LOAN`
+   + `REVOLVING_LOAN`
++ productTypeCodeOffer: `CLX` (string, required) - offer type code
++ productCodeOffer: `CLX_RBPv09_STD` (string, required) - CRM pilot offer code
++ productNameOffer: `CLX_STANDARD_OFFER_STD` (string, optional) - Product name offer, available for product offer only
++ limitId: `0a13878c-6d6c-1498-816d-72c563f46815` (string, required) - limit ID which offer belongs to
++ validFrom: `2018-08-16` (string, required) - date which offer is valid from
++ validTo: `2018-08-17` (string, required) - date which offer is valid to
++ minimalCashPayment: (AmountCurrency, required) - minimum amount of down payment that customer needs to make
++ maximalCreditAmount: (AmountCurrency, required) - maximum credit amount that customer is offered
++ maximalMonthlyInstallment: (AmountCurrency, required) - maximum monthly installment amount that customer needs to payment
++ recalAllow: `true` (boolean, optional) - marketing offer is allowd to recal or not
+
+## RecalculateResult (object)
++ scoringCode: `1750976` (string, required) - trace code to query scoring result
+
+## ScoringResult (object)
++ recalculateResult: `APPROVED` (enum, required) - recalculation result
+   + `APPROVED`
+   + `SCORING`,
+   + `SCORING_FAILED`
+   + `NO_OFFERS_CREATED`
++ offerId: `0a13878c-6d8c-1a87-816d-909917b30054` (string, optional) - return new offerId only when recalculateResult is APPROVED
+
+## MarketingOfferDetaiils (object)
++ offerId: `0a13878c-6d8c-1a87-816d-909917b30054` (string, required) - product offer ID
++ offerPriority: `3` (string, required) - priority of offer
++ offerType: `PRODUCT` (enum, required) - type of offer
+   + PRODUCT
++ lenderCode: `ABB` (string, optional) - Entrustment Lending partner
++ offerStatus: `ACTIVE` (string, required) - status of offer. ACTIVE - valid offer can be used for application creation. DEACTIVED - invalid offer, deactived due to already used or expired. BLOCKED
++ offerData (MarketingOfferData, required) - offer information
+
+# IpListResponse (object)
++ instalmentPlanId: `1165525423090302976` (string, required) - installment plan ID
++ installmentPlanStatus: (enum, required) - installment plan status
+    + ACTIVE
+    + COOLED_OFF
+    + TRANSFER_BACK_PENDING
+    + TRANSFERRED_BACK
+    + PRESCRIBED
+    + PAID
+    + CANCELLED
+    + PAID_OFF
+    + FULL_EARLY_REPAID
++ installmentPlanType: (enum, required) - installment type
+    + EPP
+    + ICT
+    + AEPP
+    + LOP
+    + ALOP
++ sourceTransaction (SourceTransaction, optional) - original card transaction
++ installmentPlanCreationDate: `2019-09-04`(string, required) - installment plan creation date
++ statusChangeDate: `2019-09-04` (string, required) - status change date
++ principalAmount (AmountCurrency, required) - principal amount
++ numberOfInstallments: `12` (string, optional)
++ remainingPrincipalAmount: (AmountCurrency, optional)
++ monthlyInstallmentAmount: (AmountCurrency, optional) - monthly installment amount a client need to repay
++ lastInstallmentAmount: (AmountCurrency, optional)
++ remainingInstallments: `5` (string, optional)
+
+## SourceTransaction (object)
++ system (enum, optional)
+    + CARD
+    + ACCOUNT
+    + BSL
+    + COLLECTION
+    + HCPAY
+    + IB
+    + INC_PAY
+    + LRP
+    + OBS
+    + PARTNER_NET
+    + RISK
++ transactionId: `1192352787334066176` (string, optional) - Transaction ID in source system
++ transactionType: `RTL` (enum, optional) - transaction type
+    + RTL - Payment Card purchase
++ transactionDate: `2019-09-04`(string, required) - date a transaction made
++ transactionAmount: (AmountCurrency, required) - transaction amount
+
+## IpDetailResponse (object)
++ instalmentPlanId: `1165525423090302976` (string, required) - installment plan ID
++ installmentPlanStatus: (enum, required) - installment plan status
+    + ACTIVE
+    + COOLED_OFF
+    + TRANSFER_BACK_PENDING
+    + TRANSFERRED_BACK
+    + PRESCRIBED
+    + PAID
+    + CANCELLED
+    + PAID_OFF
+    + FULL_EARLY_REPAID
++ sourceTransaction (SourceTransactionShort, required) - original card transaction
++ principalAmount (AmountCurrency, required) - amount transfered to Installment Plan
++ monthlyInstallmentAmount (AmountCurrency, required) - monthly installment amount a client need to repay
++ numberOfInstallments: `12` (string, optional) - number of installment client need to repay
++ installmentDetails (array[InstallmentDetail], fixed-type, required)
+
+## SourceTransactionShort (object)
++ transactionId: `1192352787334066176` (string, optional) - Transaction ID in source system
++ transactionAmount: (AmountCurrency, required) - transaction amount
++ transactionDate: `2019-09-04`(string, required) - date a transaction made
+
+## InstallmentDetail (object)
++ installmentNumber: `1` (number, required) - order number
++ totalAmount (AmountCurrency, required) - totalAmount of installment
++ principalAmount: (AmountCurrency, required) - amount transfered to Installment Plan
++ interestAmount: (AmountCurrency, required) - interest amount
++ status: (enum, required) - installment status
+   + UNPRESCRIBED
+   + PRESCRIBED
+   + PAID
+   + CANCELLED
+   + PAYHOL
++ dueDate: `2019-12-10` (string, required) - installment date due
++ paidAmount: (AmountCurrency, required) - amount client paid
++ principalBalance: (AmountCurrency, required) - outstanding pricipal amount
++ interestPeriodStart: `2019-11-04` (string, required) - interest from this day
++ interestPeriodEnd: `2019-12-09` (string, required) - interest to this day
++ interestPeriodDuration: `36` (number, required) - number of day from start to end interest period
+
+## replacementResult (object)
++ replaceCardResult: `SUCCESS` (string, required) - Card replacement result
++ newPcid: `3336` (string, required) - picd of new card
++ truncatedPan: `496616******2483` - truncated PAN of new card
+
+## ERinformation (object)
++ erDueDate: `2020-06-17` (string, required) - Early repayment due date
++ recommendedDate: `2020-06-16` (string, required) - Recommended date of payment
++ signedDate: `2020-02-17` (string, required) - Signed date of contract
++ penaltiesSum: (AmountCurrency, required) - Sum of penalties
++ totalERamount: (AmountCurrency, required) - Total Early repayment amount
++ principalSum: (AmountCurrency, required) - Sum of principal
++ interestSum: (AmountCurrency, required) - Sum of interest
++ feesSum: (AmountCurrency, required) - Sum of fees
++ erFeeSum: (AmountCurrency, required) - Sum of ER fee
++ totalToPayment: (AmountCurrency, required) - Total amount to payment
++ overpaymentAmount: (AmountCurrency, required) - Overpayment amount
++ prepaymentAmount: (AmountCurrency, required) - prepayment amount of client which has not been paid to installment schedule due to before due date
++ giftService: `true` (boolean, required) - whether this contract has Gift service
++ erFeePercentage: `0.1` (number, required) -  fee condition for Early repayment
++ moratorium: `3` (number, required) - FER due date has to be after this period of time
++ totalOutstandingDebtToErDate: (AmountCurrency, required) - Monthly installment left needs to be paid
++ gracePeriod: `true` (boolean, required) - whether this contract is eligible (true) or ineligible (false) for Grace Period service
+
+## DebtCalculator (object)
++ outstandingDebt: (AmountCurrency, required) - total amount which is customer obliged to pay for receiving zero ledger balance
++ holdAmount: (AmountCurrency, required) - total amount of authorized not yet confirmed transactions
++ sumInsurance: (AmountCurrency, required) - insurance amount counted till the date of repayment
++ debtPrincipal: (AmountCurrency, required) - debt on principal that has not been paid yet
++ debtInterest: (AmountCurrency, required) - interest amount counted till the date of repayment
++ debtFee: (AmountCurrency, required) - fee counted till the date of repayment
++ debtPenalty: (AmountCurrency, required) - penalty counted till the date of repayment
++ debtOther: (AmountCurrency, required) - other debt counted till the date of repayment
++ ownFunds: (AmountCurrency, required) - own funds of the client
++ sumCreditInterest: (AmountCurrency, required) - sum of credit interest till the date of repayment
+
+## TransactionInfo (object)
++ transactionAmount (AmountCurrency, fixed-type, required) - requested amount of money
++ loanPurpose (LoanPurpose, optional) - purpose of loan
++ disbursementInfo (DisbursementInformation, fixed-type, required) - disbursement information
+
+## DisbursementInformation (object)
++ method: `GENERAL_BANK_ACCOUNT` (enum, required) - disbursement method
+   + `GENERAL_BANK_ACCOUNT` - GBA General bank account
+   + `PARTNER_BANK` - PBA Payment provider bank account (e-wallet)
+   + `CARD_ACCOUNT` - External (Eg. Citibank, Vietcombank,...) Card Account Number
++ bankAccount (BankAccountInformation, fixed-type, optional) - to be used for method GENERAL_BANK_ACCOUNT and direct debit type
++ salesroomCode: `1E0347` (string, optional) - salesroom code
++ cardAccount (CardAccount, fixed-type, optional) - to be used for method CARD_ACCOUNT type
+
+## BankAccountInformation (object)
++ accountNumber: `007563156525285` (string, required) - recepient´s bank account number
++ bankCode: `202` (string, required) - recepient´s bank code
++ bankBranch: `BB319` (string, required) - recepient´s bank branch
++ holderName: `Nguyen Van A` (string, optional) - recepient´s name
+
+## AccountBalance (object)
++ holdBalance (AmountCurrency, required) - hold balance
++ outstandingDebt (AmountCurrency, required) - outstanding Debt
++ ledgerBalance (AmountCurrency, required) - ledger Balance
++ availableBalance (AmountCurrency, required) - available Balance
+
+## LopIPResponse (IpOffer)
++ serviceCode: `LOPPACK` (string, optional)
+
+## CustomerOfferResponseSuccess1 (object)
++ offerCode: `1234` (string, required) - Key for unique identification of particular offer.
++ lenderCode: `ABB` (string, optional) - Entrustment Lending partner
++ productInformation (Product, fixed-type, required) - information of product from offer
++ services (array[Service], fixed-type, required) - all services of product offer
++ One Of
+   + relOffer (RELOfferInfo1, fixed-type, optional) - additional info of REL offer
+   + celOffer (CELOfferInfo, fixed-type, optional) - additional info of CEL offer
+
+## RELOfferInfo1 (object)- parameters for REL only
++ creditLimit (AmountCurrency, optional) - credit limit amount of an account for cash loan
++ relInterestRates (array[RelInterestRate], fixed-type, optional) - interest rate in case of rel
++ cardMaintenanceFee (AmountCurrency, optional) - Annual card maintenance fee
++ relOfferCode: `23542` (string, optional) - offer code for credit card with initial goods purchase
++ tenor: 10 (number, optional) - number of installment for initial goods purchase
++ AIR: 12.6 (number, optional) - Annual Interest Rate
++ initAIR: 12.6 (number, optional)
++ downPayment (AmountCurrency, optional) - total down payment of client for initial goods purchase
++ loanAmount (AmountCurrency, optional) - total principal
++ minimalInstallmentAmount (AmountCurrency, optional) - Total amount of regular repayment.
++ feeAmount (AmountCurrency, optional) - total fee amount for credit card with initial goods purchase
+
+## CancellationRequestResponse (object)
++ contractNumber: `1234567891` (string, required)
++ cancellationRequestDetail (CancellationRequestDetail, required)
+
+## CancellationRequestDetail (object)
++ requestId: `CNN_CRG_00164309` (string, required) - cancellation request code
++ status: `APPROVE` (string, required) - request status
++ evaluatedDepartment: `BO - Contract management` (string, required) - department incharges evaluate the request
++ approvedBy: `officer` (string, optional) - approval officer
++ approvedAt: `Fri, 27 Nov 2020 07:35:39 UTC` (string, optional)
+
+## CustomerOfferRequest (object)
++ loanType: `GOODS_LOAN` (enum, required) - loan request is goods purchasing or cash loan
+   + `GOODS_LOAN`
+   + `CASH_LOAN`
+   + `REL_NON_INI` -  request is Revolving loan without initial transaction
++ commodities (array[Commodity], fixed-type, optional) - commodities specified in loan request in case of isPurchased is true
++ requestedLoanAmount (AmountCurrency, fixed-type, optional) - Preferred loan amount (for cash loan & rel)
++ maxCashPayment (AmountCurrency, fixed-type, optional) - maximum amount of cash payment from customer
++ maxMonthlyPayment (AmountCurrency, fixed-type, optional) - maximum monthly payment amount
++ maxTenor: 48 (number, optional) - maximum tenors, terms to repay loan; will not return Revolving Loan
++ hasGoodsInsurance: `ANY` (enum, optional) - offer has goods insurance service
+   + `ANY` - NO_PREFERENCE
+   + `YES` - REQUIRED
+   + `NO` - REFUSED
++ hasLifeInsurance: `ANY` (enum, optional) - offer has life insurance service
+   + `ANY` - NO_PREFERENCE
+   + `YES` - REQUIRED
+   + `NO` - REFUSED
++ hasSMSNotification: `ANY` (enum, optional) - offer has sms notification service
+   + `ANY` - NO_PREFERENCE
+   + `YES` - REQUIRED
+   + `NO` - REFUSED
++ identityCardNumber: `024478987` (string, optional) - ID card number of customer
++ email (Email, fixed-type, optional) - email of customer
++ phoneNumber (PhoneNumber, fixed-type, optional) - phone number of customer
++ campaignID: `72317` (string, optional) - ID of campaign
++ salesroomCode: `000001` (string, optional) - salesroom code of partner
+
+## CustomerOfferResponseFailure (object)
++ resultMessage: `INVALID_LOAN_OPTION` (enum, required)
+   + `INVALID_LOAN_OPTION`
+   + `MISSING_COMMODITY`
+   + `INVALID_COMMODITYTYPE`
+   + `INVALID_COMMODITYPRICE`
+   + `INVALID_SALESROOM`
+   + `INVALID_CURRENCY`
+   + `INVALID_LOAN_AMOUNT`
+   + `INVALID_MAXCASHPAYMENT`
+   + `INVALID_MAXMONTHLYPAYMENT`
+   + `INVALID_DOCUMENTTYPE`
+   + `BOUNDOFFERCODE_NOT_FOUND`
+   + `BOUNDOFFERCODE_NOT_VALID`
+   + `BOUNDOFFERCODE_NOT_ALLOWED`
+   + `BOUNDOFFERCODE_NOT_UNIQUE`
+   + `INVALID_SERVICETYPE`
+   + `INVALID_SERVTYPEPREF`
+   + `NOT_SALESROOMUSER`
+
+## ApplicationResponseFailure (object)
++ resultCode: `INVALID_APPLICATION_DATA` (enum, required)
+   + `INVALID_APPLICATION_DATA`
+   + `INVALID_CUSTOMER_OFFER_CODE`
+   + `INELIGIBLE_INSURANCE`
+   + `UID_CHECK_FAILED`
++ errorMessage (ErrorMessage, optional)
+
+## ErrorMessage (object)
++ code: `clientBirthdate` (string, optional)
++ message: `MSG_REQUIRED` (string, optional)
+
+## EnumCode (enum)
++ `ECONOMICAL_STATUS`
++ `EDUCATION`
++ `MARITAL_STATUS`
++ `EMPLOYMENT_TYPE`
++ `PROFESSION`
++ `ACCOMPANIMENT_TYPE`
++ `ADDRESS_TYPE`
++ `RELATION_TYPE`
++ `LOAN_PURPOSE`
+
+## EnumCodeList (object)
++ code: `COLLEAGUE` (string, required) - item code of the enum List
++ enValue: `Colleague` (string, required) - english value of the enum item code
++ vnValue: `Đồng nghiệp` (string, required) - vietnamese value of the enum item code
++ isActive: `true` (boolean, required) - status of enum item code
+
+## LoanInformation (object)
++ offerID: `0913812` (string, optional) - ID of offer
++ commodityName: `Điện thoại iPhone X 64GB Gray` (string, optional) - name of commodity
++ commodityCategory: `CC_AUDIO_VIDEO` (string, optional) - category of commodity
++ commodityType: `CT_AUDIO_VIDEO_1` (string, optional) - type of commodity
++ commodityPrice (AmountCurrency, optional) - price of commodity
++ commodityManufacturer: `HUAWEI` (string, optional) - manufacturer of commodity
++ commodityModel: `HUAWEI NOVA 3I` (string, optional) - model of commodity
++ downPayment: 30 (number, optional) - percentage of down payment made
++ loanAmount (AmountCurrency, optional) - loan amount
++ tenor: 6 (number, optional) - tenor of loan
++ monthlyInterestRate: 4.1 (number, optional) - monthly interest rate of loan
++ insuranceSelection: `YES` (enum, optional)
+    + `YES`
+    + `NO`
++ insuranceAmount (AmountCurrency, optional) - if not select insurance, insuranceAmount is default to 0
++ monthlyRepayment (AmountCurrency, optional) - monthly repayment of loan amount
++ commodityImage: `https://cdn.fptshop.com.vn/Uploads/Originals/2018/9/7/636719282375348881_F9.jpg` (string, optional) - URL of image
+
+## CustomerIdentitiesRequest (object)
++ applicationCode: `1234567891` (string, required) - application code
++ verificationID: `I5ABCAD2FM4quABCAD2B` (string, required) - verificationID of matched OTP validation
+
+## CustomerIdentitiesResponse (object)
++ result: `FOUND` (enum, required) - result of customer identities check
+    + `FOUND`
+    + `NOT_FOUND`
++ accessToken (AccessToken, optional) - access token for CustomerPartner scope when customer is found
+
+## SimulatedIpOfferRequest (object)
++ idCardNumber: `024705381` (string, required) - id card number of client
++ birthDate: `1978-02-15` (string, required) - date of birth
++ simulatedTransactionAmount: (AmountCurrency, required) - simulated transaction amount
+
+## SimulatedIpOfferResponse (object)
++ simulatedOfferCode: `1154335410322554880` (string, required) - simulated installment plan code
++ tenor: `12` (number, required) - numberOfInstallment
++ interestRate: `0` (number, required) - interest rate of installment plan
++ monthlyInstallmentAmount: (AmountCurrency, required) - number of amount need to install monthly
++ variantCode: `1` (string, required) - installment plan variant code
++ variantName: `FSNONMPOS_9M 1` (string, required) - installment plan variant name
+
+## AccessToken (object)
++ token_type: `bearer` (string)
++ access_token: `70545309f4784d2a94a37c346acbd1a4` (string)
++ expires_in: `7200` (string)
+
+## GoodsDeliveryNotesRequest (object)
++ deliveryGroup: `STANDARD` (enum, required)
+    + STANDARD - Deliver initial product which was choosen and stated on the contract
+    + EXCHANGE - Deliver exchanged product which differ from initial product on the contract
+    + RETURN - Product was returned to store
++ clientInfo: (ClientInfo, optional)
++ inventoryNotes: (InventoryNotes, required) - inventory notes
++ deliveryDetails: (DeliveryDetails, required) - delivery details
+
+## ClientInfo (object)
++ fullName: `Nguyen Van A` (string, optional) - client name
++ identificationCardNumber: `123456748` (string, optional) - client identification card document number
++ phoneNumber: `0906572306` (string, optional) - client phone number
+
+## InventoryNotes (object)
++ storeName: `THẾ GIỚI DI ĐỘNG NAM KỲ KHỞI NGHĨA` (string, optional)
++ storeAddress: `4 Nam Ky Khoi Nghia, Q1, TPHCM` (string, optional)
++ productInfo: (array[ProductDetailInfo], fixed-type, required) - delivered product info (first time on the contract). Only allow to input maximum 5 products
++ productExchangeDetail: (array[ProductExchangeInfo], fixed-type, optional) - required if deliveryGroup is EXCHANGE
++ productReturnDetail: (array[ProductReturnInfo], fixed-type, optional) - required if deliveryGroup is RETURNED
+
+## DeliveryDetails (object)
++ deliveryAddress: `4 Nam Ky Khoi Nghia, Q1, TPHCM` (string, required) - the address where client received thier purchased GoodsDeliveryNote
++ deliveryDate: `2019-12-27` (string, required) - client received their purchased goods deliveryDate
++ receiverPhoneNumber: `0901526253` (string, optional)
++ deliveryNotes: `deliver during working hours from 8AM to 5PM` (string, optional)
+
+## GoodsDeliveryNotesResponse (object)
++ result: `Delivery status has been updated successfully` (string, required)
+
+## ProductExchangeInfo (ProductInfo)
++ exchangeDate: `2019-12-28` (string, required)
+
+## ProductReturnInfo (ProductInfo)
++ returnDate: `2019-12-28` (string, required)
+
+## ProductInfo (object)
++ productName: `Iphone` (string, required)
++ productModel: `Apple iPhone X` (string, optional)
++ productPrice: (AmountCurrency, required)
++ productSerialNumber: `83478397434` (string, optional) - required if productImeiNumber is null
++ productImeiNumber: `83478391827AB` (string, optional) - required if productSerialNumber is null
+
+## ProductDetailInfo (ProductInfo)
++ invoiceNumber: `000291-1704` (string, required)
+
+## CardActivationRequest
++ phoneNumber: `0508090163` (string, required) - phone number of client
++ 4panDigits: `9405` (string, required) - the last 4 digits of PAN
+
+## OfferListResponse (object)
++ offerId: `0a13878c-6d8c-1a87-816d-909917b30054` (string, required) - product offer ID
++ offerPriority: `3` (string, required) - priority of offer
++ offerType: `PRODUCT` (enum, required) - type of offer
+   + PRODUCT
++ offerStatus: `ACTIVE` (enum, required) - status of offer
+   + ACTIVE - valid offer can be used for application creation
+   + DEACTIVED - invalid offer, deactived due to already used or expired
++ offerData (OfferDetailData, required) - offer information
+
+## OfferDetailData (object)
++ productOffer: `CLOSE_END_LOAN` (enum, required) - product type of offer
+   + `CLOSED_END_LOAN`
+   + `REVOLVING_LOAN`
++ productTypeCodeOffer: `CLX` (string, required) - offer type code
++ productCodeOffer: `CLX_RBPv09_STD` (string, required) - CRM pilot offer code
++ productNameOffer: `CLX_STANDARD_OFFER_STD` (string, optional) - Product name offer, available for product offer only
++ limitId: `0a13878c-6d6c-1498-816d-72c563f46815` (string, required) - limit ID which offer belongs to
++ validFrom: `2018-08-16` (string, required) - date which offer is valid from
++ validTo: `2018-08-17` (string, required) - date which offer is valid to
++ minimalCashPayment: (AmountCurrency, required) - minimum amount of down payment that customer needs to make
++ maximalCreditAmount: (AmountCurrency, required) - maximum credit amount that customer is offered
++ maximalMonthlyInstallment: (AmountCurrency, required) - maximum monthly installment amount that customer needs to payment
++ recalAllow: `true` (boolean, optional) - marketing offer is allowd to recal or not
+
+## ProductOffersRequest (object)
++ loanType: `GOODS_LOAN` (enum, required) - loan request is goods purchasing or cash loan
+   + `GOODS_LOAN`
+   + `CASH_LOAN`
+   + `REL_LOAN`
++ commodities (array[Commodity], fixed-type, optional) - commodities specified in loan request in case of isPurchased is true
++ requestedLoanAmount (AmountCurrency, fixed-type, optional) - Preferred loan amount (for cash loan & rel)
++ maxCashPayment (AmountCurrency, fixed-type, optional) - maximum amount of cash payment from customer
++ maxMonthlyPayment (AmountCurrency, fixed-type, optional) - maximum monthly payment amount
++ maxTenor: 48 (number, optional) - maximum tenors, terms to repay loan; will not return Revolving Loan
++ hasGoodsInsurance: `ANY` (enum, optional) - offer has goods insurance service
+   + `ANY` - NO_PREFERENCE
+   + `YES` - REQUIRED
+   + `NO` - REFUSED
++ hasLifeInsurance: `ANY` (enum, optional) - offer has life insurance service
+   + `ANY` - NO_PREFERENCE
+   + `YES` - REQUIRED
+   + `NO` - REFUSED
++ hasSMSNotification: `ANY` (enum, optional) - offer has sms notification service
+   + `ANY` - NO_PREFERENCE
+   + `YES` - REQUIRED
+   + `NO` - REFUSED
++ campaignID: `72317` (string, optional) - ID of campaign
+
+
+## OnlineScoring (object)
++ sessionID: `12345678` (string, required) - session ID
++ digitalCampaignID: `CAMP123` (string, optional)- ID of campaign
++ landingPageID: `21423` (string, required)
++ income: `12000000` (number, optional) - income of client
+
+## ProductOfferResponse (object)
++ offerId: `0a13878c-6d8c-1a87-816d-909917b30054` (string, required) - product offer ID
++ offerTypeCode: `SCORING_OFFER_PR1_NO_OTP` (string, required) - product offer type
++ offerPriority: 3 (number, required) - priority of offer
++ maximalCreditAmount: (AmountCurrency, optional) - maximum credit amount that customer is offered
++ minimalInstallment: (AmountCurrency, optional) - minimum monthly installment amount that customer needs to payment
++ interestRate: 4.1 (number, optional) - interest rate of loan
++ productCodeOffer: `CLX_FLAT_STD` (string, required) - CRM pilot offer code
++ customInfo (CustomInfo, optional) -  custom information of offer (if any)
+
+## CustomInfo (object)
++ customInfo1: null (string, optional) - custom info 1
++ customInfo2: null (string, optional) - custom info 2
++ customInfo3: null (string, optional) - custom info 3
++ customInfo4: null (string, optional) - custom info 4
++ customInfo5: null (string, optional) - custom info 5
+
+
+## ApplicationUpdateRequest (object)
++ phoneNumbers (array[PhoneNumber], fixed-type, required) - client phone numbers
++ addresses (array[Address], fixed-type, required) - client addresses
++ maritalStatus (MaritalStatus, optional) - client's marital status
++ numberOfChildren: 1 (number, optional) - number of children
++ education (Education, optional) - highest degree of education
++ identificationDocuments (array[IdentificationDocument], fixed-type, required) - client identity documents
++ additionalDocuments (array[Document], fixed-type, required) - other user related documents
++ relatedPersons (array[RelatedPerson], fixed-type, required) - information of related people
++ employmentInfo (Employment, optional) - employment information
++ commodity (Commodity, optional) - commodity info
++ loanPurpose (LoanPurpose, optional) - purpose of loan
++ repaymentInfo (PaymentInformation, optional) - repayment info
++ disbursementInfo (PaymentInformation, optional) - disbursement info
++ comment: `this is a comment` (string, optional) - additional comment
++ internalCode: `HCR01` (enum, optional) - internal code selection only used in case salesman select
+   + `HCR01`
+   + `HCR02`
+   + `HCR03`
+   + `HCR04`
+   + `HCR05`
+
+## ApplicationRequest (object)
++ offerCode: `123` (string, required) - offer code received from Customer Offer or xsell offer if available)
++ application (Application, required) - application form of a loan request
++ partnerOrderId: `123` (string, optional) - optional info from external party
++ merchantUrls (MerchantUrls, optional)
++ userStatistics (array[UserStatistics], fixed-type, required) - used to input session_id for underwriting purpose
++ internalCode: `HCR01` (enum, optional) - internal code selection only used in case salesman select
+   + `HCR01`
+   + `HCR02`
+   + `HCR03`
+   + `HCR04`
+   + `HCR05`
+
+## Commodities (object)
++ commodityName: `Điện thoại iPhone X 64GB Gray` (string, required) - name of commodity
++ commodityCategory: `CC_AUDIO_VIDEO` (string, required) - category of commodity
++ commodityType: `CT_AUDIO_VIDEO_1` (string, required) - type of commodity
++ commodityPrice (AmountCurrency, required) - price of commodity
++ commodityManufacturer: `HUAWEI` (string, required) - manufacturer of commodity
++ commodityModel: `HUAWEI NOVA 3I` (string, required) - model of commodity
++ commodityImage: `https://cdn.fptshop.com.vn/Uploads/Originals/2018/9/7/636719282375348881_F9.jpg` (string, optional) - URL of image
+
+## Application (object)
++ applicantPerson (Client, required)
++ maritalStatus (MaritalStatus, optional) - client's marital status
++ numberOfChildren: 1 (number, optional) - number of childrens
++ education (Education, optional) - highest degree of education
++ additionalDocuments (array[Document], fixed-type, required) - other user related documents, required at least 1 document with type PHOTO_PERSON
++ employmentInfo (Employment, required) - employment information
++ relatedPersons (array[RelatedPerson], fixed-type, required) - information of related people
++ repaymentInfo (PaymentInformation, optional) - repayment info
++ disbursementInfo (PaymentInformation, optional) - disbursement info
++ commodity (Commodity, optional) - commodity info
++ loanPurpose (LoanPurpose, optional) - purpose of loan
++ comment: `this is a comment` (string, optional) - additional
++ salesroomCode: `000001` (string, optional) - salesroom code
++ One Of
+   + retailAgent: `1213124` (string, optional) - code of retail agent
+   + salesAgent: `tuan_sa` (string, optional) - code of sales agent
+
+## CommodityInformation (object)
++ imei: `444348169188601` (string, optional) - imei number used to update to commodity
++ serialNumber: `ABCD1234456` (string, optional) - serial number used to update to commodity
+
+## ApplicationInfoResponse (object)
++ clientInfo (TruncatedClientInfo, optional) - client information
++ productCode: `CD902A-02` (string, required) - product code
++ commodities (array[Commodity], fixed-type, optional) - commodities specified in loan request in case of isPurchased is true
++ approvalDate: `2020-08-07` (string, required) - date of birth
++ downPayment: (AmountCurrency, required) - down payment amount
++ salesroomCode: `000001` (string, required) - shop code
++ terms: 6 (number, optional) - term of offer
++ annualInterestRate: 12.6 (number, optional) - annual interest rate of offer
++ insurances (array[insuranceInfo], fixed-type, optional]) - insurance info
+
+## ApplicationCancellationRequest (object)
++ cancellationReason: `WRONG_INPUT_INFO` (enum, required) - The valid date of material
+   + `WRONG_INPUT_INFO` - Wrong client's information can't edit
+   + `CLIENT_CHANGE_PRODUCT` - Client changes other product
+   + `CLIENT_NO_BUY_PROD` - Client does not want to buy product
+   + `ID_AND_ADDRESS_NOT_SAME` - Both client's ID No. and permanent address on ID and FRB not the same
+   + `CLIENT_CHANGE_DOWNPAYMENT_TENOR` - Client wants to change tenor or percentage of the down payment
+   + `CLIENT_ILLITERATE` - Client was found as illiterate
+   + `CLIENT_RELATIVE_NOT_AGREE` - Client's relative does not agree, ask client to cancel contract
+   + `FRAUD_CONTRACT` - Fraud contract
+   + `HIGH_INTEREST` - High interest
+   + `LOW_SOCIAL_STAT` - Low social status
+   + `NEGATIVE_FRB` - Negative information in FRB
+   + `WRONG_SHOP_CODE` - RA input wrong shop code
+   + `SUSPIC_BEHAV` - Suspicious behaviour, restrain RA to do their tasks
+   + `SUSPIC_IN_ANSWER` - Suspiciously uncertain in answer
+   + `DRUGS_ALCOHOL` - Under influence of drugs or alcohol           
++ note: `put in a note here` (string, optional) - cancellation notes     
+
+## TruncatedClientInfo (object)
++ fullName: `Nguyen Van A` (string, optional) - client name
++ identificationCardNumber: `24***3056` (string, optional) - truncated client identification card document number
++ phoneNumber: `09****5682` (string, optional) - truncated client phone number
+
+
+## ClientCheckRequest (object)
+
++ type: `ID_CARD` (enum, required) - identity document type
+    + `ID_CARD`
+    + `FAMILY_BOOK`
+    + `DRIVERS_LICENSE`
++ number: `123456748` (string, required) - identity document number
++ birthDate: `1978-02-15` (string, required) - date of birth
+
+## ClientCheckResponse (object)
+
++ result: `FOUND` (enum, required) - result of client check
+    + `FOUND`
+    + `NOT_FOUND`
++ recordFound: 1 (number, required) - number of matching record
+
+## ClientSearchResponse (object)
+
++ result: `ALREADY_EXISTING` (enum, required)
+    + `ALREADY_EXISTING`- Client is already existing
+    + `ALREADY_EXISTING_AS_NEW`- Client is already existing but have no valid contract yet
++ identificationCandidates (IdentificationCandidates, fixed-type, optional)
+
+## ClientCreationRequest (object)
+
++ name (FullName, required) - full name of client
++ birthDate: `1978-02-15` (string, required) - date of birth
++ income: `20000000` (number, optional) - new income of client. Currency is VND
++ gender: `MALE` (enum, required)
+    + `MALE`
+    + `FEMALE`
++ phoneNumber: (PhoneNumber, required) - client phone number
++ prospectExternalId: `123456` (string, optional) - prospect external id
++ identificationDocuments (array[ClientIdentificationDocument], fixed-type, required) - client identity documents, required at
+  least 2 id documents
++ additionalDocuments (array[ClientAdditionalDocument], fixed-type, optional) - other user related documents
+
+## ClientCreationResponse (object)
+
++ result: `CREATED` (enum, required) - result of client creation
+    + `CREATED` - Success Client Creation
+    + `ALREADY_EXISTING`- Client is already existing
+    + `ALREADY_EXISTING_AS_NEW`- Client is already existing but have no valid contract yet
+    + `PARTIAL_DEDUPLICATION` - Found partial duplicated in existing client
++ identificationCandidates (IdentificationCandidates, fixed-type, optional)
++ requestId: `134a9d00-c378-4bec-b0f1-4cc5fe1230eb` (string, optional) - requestId from PIF
+
+## ClientUpdateRequest (object)
+
++ externalClientId: `1XEABCAD2FABCAD2F8kv` (string, required) - encrypted CUID
++ prospectExternalId: `123456` (string, optional) - prospect external id
++ additionalDocuments (array[ClientAdditionalDocument], fixed-type, required) - other user related documents
+
+## ClientUpdateResponse (object)
+
++ identificationCandidates (IdentificationCandidates, fixed-type, optional)
++ requestId: `134a9d00-c378-4bec-b0f1-4cc5fe1230eb` (string, optional) - requestId from PIF
+
+## IdentificationCandidates (object)
+
++ externalClientId: `1XEABCAD2FABCAD2F8kv` (string, optional) - encrypted CUID
++ name (FullName, required) - full name of client
++ birthDate: `1978-02-15` (string, required) - date of birth
++ phoneNumber: (PhoneNumber, required) - client phone number
++ identificationDocuments (array[ClientIdentificationDocument], fixed-type, required) - client identity documents
++ additionalDocuments (array[ClientAdditionalDocument], fixed-type, optional) - other user related documents
+
+## ClientIdentificationDocument (object)
+
++ type: `ID_CARD` (enum, required) - identity document type
+    + `ID_CARD`
+    + `FAMILY_BOOK`
+    + `DRIVERS_LICENSE`
++ number: `123456748` (string, required) - identity document number
+
+## ClientAdditionalDocument (object)
+
++ type: `BANK_STATMENT_3` (enum, required) - type of documents
+    + `BANK_STATMENT_3` - 3 months Bank Account Statement
+    + `BILL_ANY` - Utility Bill
+    + `BILL_ANY_ELECT` - Electric Bill
+    + `BILL_ANY_PHONE` - Phone Bill
+    + `BILL_ANY_TV` - TV Cable Bill
+    + `BILL_ANY_WATER` - Water Bill
+    + `BUS_REG_CERT` - Business Registration Certificate
+    + `COMP_CONFRM_LETTR` - Company Confirmation Letter
+    + `LAB_CONTRACT` - Labor Contract
+    + `OFR_LETT` - Cash Loan Offer Letter
+    + `OPS_LICENSE` - Operation License
+    + `PAY_SLIP_ANY` - Salary Pay Slip
+    + `PAY_SLIP_ANY_3` - 3 months Pay Slip
+    + `PAY_SLIP_ANY_6` - 6 months Pay Slip
+    + `TAX_CERT` - Tax Certificate
+    + `GOODS_RECEIPT` - Goods receipt
+    + `STUDENT_CARD` - Student Card
+    + `CAR_OWNER_CERT` - Certificate of ownership for car or truck
+    + `MEDICAL_INS_CARD` - Social Medical Insurance Card
+    + `PHOTO_PERSON` - Client photo
+    + `PICTURE_OF_MISTAKE` - Picture of Mistake
+    + `RENT_CONTRACT` - Renting/ Leasing contract
++ number: 23232323 (string, required) - value of document type attribute
+## OFSScoring (object)
++ phoneNumber: `0906572306` (string, required) - phone number to send OTP
++ verificationID: `=I5ABCAD2FM4quABCAD2BAAlUVpE6tkNAKLA` (string, required) - id of generated verification code
++ otpCode: `431412` (string, required) - OTP inputted
++ sourceChannel: `WEB` (enum, required)
+    + WEB
+    + CAPP
+## OFSResponse (object)
++ existingClient: `FOUND` (enum, required) - whether this client ID exists in system
+    + `FOUND`
+    + `NOT_FOUND`
++ existingOffer: `FOUND` (enum, required) - whether offers for this client ID exist
+    + `FOUND`
+    + `NOT_FOUND`
++ data (array[OfferListResponse], fixed-type, optional)
+
+## OFSScoringNoOTP (object)
++ externalClientId: `1XEABCAD2FABCAD2F8kv` (string, required) - encrypted CUID
++ sourceChannel: `WEB` (enum, required)
+    + WEB
+    + CAPP
+## OFSNoOTPResponse (object)
++ existingOffer: `FOUND` (enum, required) - whether offers for this client ID exist
+    + `FOUND`
+    + `NOT_FOUND`
++ data (array[OfferListResponse], fixed-type, optional)
+
+## ScoringRequest (object)
++ ofsScoring (OFSScoring, fixed-type, required) - Scoring offer by OfferStore
+
+## OfferScoringResult (object)
++ recalculateResult: `APPROVED` (enum, required) - recalculation result
+   + `APPROVED`
+   + `LAP_PROCESSING`,
+   + `PST_PROCESSING`,
+   + `OFS_PROCESSING`,
+   + `SCORING_FAILED`
+   + `NO_OFFERS_CREATED`
++ offers (array[OfferListResponse], fixed-type, optional)
+
+## LeadRequest (object)
++ partnerOrderID: `10123123` (string, optional) - orderID of order
++ clientName (FullName, required) - fullname of client
++ gender: `MALE` (enum, optional)
+    + `MALE`
+    + `FEMALE`
++ birthDate: `1978-09-19` (string, optional) - date of birth
++ identificationNumber: `123456748` (string, optional) - identity document number - client identity documents
++ phoneNumber: `0906572306` (string, required) - phone number of client
++ email: `client@gmail.com` (string, optional) - email address of client
++ commodities: (Commodities, required) - Commodities information
++ shopAddress: `80 Trần Nhật Duật, P. Đồng Xuân, Quận Hoàn Kiếm` (string, optional) - address that customer choose to pickup goods
++ productCode: `0913812` (string, optional) - Product code
++ downPayment: 30 (number, required) - percentage of down payment made
+
+## LeadResponseSuccess (object)
++ leadID: `0123912391` (string, required) - id of lead generated
++ returnID: `70545309f4784d2a94a37c346acbd1a4` (string, required) - token used for redirect
++ redirectURL: `https://eshop.gateway.com` (string, required) - URL for redirect
+
+## LeadDetails (object)
++ partnerOrderID: `10123123` (string, required) - orderID of order
++ clientName (FullName, required) - fullname of client
++ gender: `MALE` (enum, required)
+    + `MALE`
+    + `FEMALE`
++ birthDate: `1978-09-19` (string, required) - date of birth
++ identificationNumber: `123456748` (string, required) - identity document number - client identity documents
++ phoneNumber: `0906572306` (string, required) - phone number of client
++ email: `client@gmail.com` (string, optional) - email address of client
++ loan (LoanInformation, required) - loan information
++ shopAddress: `80 Trần Nhật Duật, P. Đồng Xuân, Quận Hoàn Kiếm` (string, optional) - address that customer choose to pickup goods
++ salesRoomCode: `000000` (string, required) - salesroom code
