@@ -31,7 +31,7 @@ There are some rules that are valid throughout whole API.
 
 Example request:
 ```
-curl -X GET https://api.homecredit.eu/customer/v1/my/contracts?sort=category&limit=10&after=15
+curl -X GET https://api.company.eu/customer/v1/my/contracts?sort=category&limit=10&after=15
 ```
 
 Example response pagingInfo:
@@ -110,7 +110,7 @@ Examples:
 - we support GZIP compression of responses. Client must specify header `Accept-Encoding: gzip` in request in order to use the compression.
 
 ## Versioning
-We use API version in URL (e.g. `https://api.homecredit.vn/customer/v1/my/profile`). Minor changes (see below) that don't break backwards compatibility do NOT increase API version, e.g. they may happen without prior notice and your application should be ready to handle them.
+We use API version in URL (e.g. `https://api.company.vn/customer/v1/my/profile`). Minor changes (see below) that don't break backwards compatibility do NOT increase API version, e.g. they may happen without prior notice and your application should be ready to handle them.
 
 Minor changes include:
 - adding new resource
@@ -214,7 +214,7 @@ To access user sensitive data through API, you have to obtain *access token* fir
 
 - So the real example using curl will look like:
 ```
-    curl -H "Authorization: Bearer secret_token"  https://api.homecredit.vn/financing/v1/customerOffers
+    curl -H "Authorization: Bearer secret_token"  https://api.company.vn/financing/v1/customerOffers
 ```
 - Access token has limited time validity (for 2 hours). After it is expired, you have to obtain new one using [`/hc-oauth2/token`](#financing-get-access-token-post)  resource
 
@@ -793,7 +793,7 @@ This resource also supports to update Imei/Serial number to commodity before pre
 **Example of Request:**
 
 > Request PrepareMaterial with updating Imei:
-https://api.homecredit.vn/financing/v2/applications/3722781175/prepareMaterial
+https://api.company.vn/financing/v2/applications/3722781175/prepareMaterial
 
 ```
 Body:
@@ -808,7 +808,7 @@ Body:
 
 
 > Request PrepareMaterial with updating both Imei and Serial Number:
-https://api.homecredit.vn/financing/v2/applications/3722781175/prepareMaterial
+https://api.company.vn/financing/v2/applications/3722781175/prepareMaterial
 
 ```
 Body:
@@ -824,7 +824,7 @@ Body:
 
 
 > Request PrepareMaterial without updating Imei/Serial number:
-https://api.homecredit.vn/financing/v2/applications/3722781175/prepareMaterial
+https://api.company.vn/financing/v2/applications/3722781175/prepareMaterial
 No body
 
 + Request PrepareMaterial
@@ -888,7 +888,7 @@ Check consent of client profile on PIF which belongs to provided contract and re
        + eSigning: `INELIGIBLE` (enum, required)
           + ELIGIBLE
           + INELIGIBLE
-       + EserviceRegistrationUrl: `https://online-test3.homecredit.vn/Customer/EServiceInputInfo?user=o_SS6yP5KWh2gKriux_NqfZTBNu9noBfd12fgQT855N0iVCs2eM2CvAILDDgWQ_ScBtHV-541t7lmHXY1v_0KMJhKMYgo-jo51focRpE0J8bOSkjxUwakymPj8nC_N6aUme1peNfK1ACxaTkoZdMZVqxll_qkrLwef7BaZgiPVAwl6JkQNEKJ3zHvonWyVjIr3Ez7xOBX8TTL6UReXWxx_l8H4w54gB0MBOCrfLb29Co_cn9JE2lTSxQZIff3WvH` (string, optional) - the link to re-direct client go to Client Zone (online.homecredit.vn) for E-Service e-signing
+       + EserviceRegistrationUrl: `https://online-test3.company.vn/Customer/EServiceInputInfo?user=o_SS6yP5KWh2gKriux_NqfZTBNu9noBfd12fgQT855N0iVCs2eM2CvAILDDgWQ_ScBtHV-541t7lmHXY1v_0KMJhKMYgo-jo51focRpE0J8bOSkjxUwakymPj8nC_N6aUme1peNfK1ACxaTkoZdMZVqxll_qkrLwef7BaZgiPVAwl6JkQNEKJ3zHvonWyVjIr3Ez7xOBX8TTL6UReXWxx_l8H4w54gB0MBOCrfLb29Co_cn9JE2lTSxQZIff3WvH` (string, optional) - the link to re-direct client go to Client Zone (online.company.vn) for E-Service e-signing
 
 + Request Invalid application (application/json;charset=UTF-8)
     + Parameters 
@@ -1933,7 +1933,7 @@ Lead Not found
 + communicationChannel: `Outgoing email` (string, required) - channel of communication
 + communicationType: `Information` (string, required) - type of communication
 + communicationSubtype: `Others` (string, required) - subtype of communication
-+ communicationUsedContact: `kytructuyen@homecredit.vn` (string, required) - contact to communicate (phone, email)
++ communicationUsedContact: `kytructuyen@company.vn` (string, required) - contact to communicate (phone, email)
 + communicationNote: `Ky HD` (string, required) - note of communication
 
 ## ApplicationOffer (object)
